@@ -271,6 +271,22 @@ fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
         }
     };
 
+    if app.use_kitty {
+        // The renderer records the area; the next tick sizes and sends the
+        // image to match it.
+        app.kitty_area = Some(inner);
+        match app.kitty_place {
+            Some(place) => crate::kitty::draw(inner, f.buffer_mut(), place),
+            None => f.render_widget(
+                Paragraph::new(placeholder)
+                    .style(Style::default().fg(MUTED))
+                    .alignment(Alignment::Center),
+                inner,
+            ),
+        }
+        return;
+    }
+
     match app.protocol.as_mut() {
         Some(protocol) => {
             f.render_stateful_widget(

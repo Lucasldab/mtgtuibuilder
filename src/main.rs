@@ -6,6 +6,7 @@ mod commander;
 mod deck;
 mod decklist;
 mod images;
+mod kitty;
 mod scryfall;
 mod stats;
 mod ui;
@@ -87,7 +88,11 @@ fn main() -> Result<()> {
     };
 
     let mut app = App::new(db, deck);
-    app.picker = Some(build_picker());
+    let picker = build_picker();
+    app.use_kitty = matches!(picker.protocol_type(), ProtocolType::Kitty);
+    app.font = picker.font_size();
+    app.is_tmux = std::env::var_os("TMUX").is_some();
+    app.picker = Some(picker);
     if let Some(stamp) = scryfall::cache_stamp() {
         app.status = format!("prices from {}", &stamp[..stamp.len().min(10)]);
     }
@@ -154,11 +159,9 @@ fn choose_protocol(
             _ => {}
         }
     }
-    if in_tmux {
-        return ProtocolType::Halfblocks;
-    }
-    // from_fontsize only guesses iTerm2 from the environment, so kitty -- the
-    // one identifiable without a query -- is filled in here.
+    // Kitty is emitted by this crate's own module, which works under tmux, so
+    // being inside tmux no longer forces a downgrade.
+    let _ = in_tmux;
     if matches!(detected, ProtocolType::Halfblocks) && kitty_env {
         return ProtocolType::Kitty;
     }
@@ -307,11 +310,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tmux_defaults_to_halfblocks() {
-        // Kitty graphics do not survive tmux passthrough; halfblocks do.
+    fn kitty_is_kept_under_tmux() {
+        // The crate's own kitty module emits per-cell placeholders, which do
+        // survive tmux -- so tmux no longer forces a downgrade.
         assert_eq!(
-            choose_protocol(ProtocolType::Kitty, None, true, true),
-            ProtocolType::Halfblocks
+            choose_protocol(ProtocolType::Halfblocks, None, true, true),
+            ProtocolType::Kitty
         );
     }
 

@@ -77,14 +77,18 @@ Set `MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override protocol
 detection, and `--doctor` to report what the preview will actually do in the
 current terminal.
 
-**Under tmux the default is halfblocks**, because kitty's graphics protocol
-does not survive it. The image travels as a passthrough sequence that tmux
-drops outright when the pane is not visible, and which otherwise reaches kitty
-without ever producing a placement -- confirmed by screenshotting a real
-session: correct geometry on the wire, placeholders recognised, empty pane, and
-`q=2` in the transmission suppressing any error kitty might have reported.
-Halfblocks are ordinary coloured cells, so tmux cannot drop them. Outside tmux
-kitty is used normally, and `MTGTUI_IMAGE_PROTOCOL=kitty` forces it anywhere.
+Kitty's protocol is emitted by `src/kitty.rs` rather than through
+ratatui-image. That crate draws a whole row of unicode placeholders into a
+single ratatui cell and marks the rest of the row skipped -- a workaround its
+own source acknowledges -- and tmux cannot represent it, since its grid holds
+one glyph plus a few combining marks per cell. The placeholder grid arrives
+malformed, kitty places nothing, and `q=2` in the transmission silences any
+error. `kitten icat` works in the same tmux by writing each cell separately,
+so this module does the same: one placeholder per cell, each carrying its own
+row, column and image-id diacritics, with the image sent as PNG straight to
+stdout, chunked, and wrapped per chunk in a tmux passthrough.
+
+Half-blocks remain the fallback for terminals without a graphics protocol.
 
 ### Inside tmux
 

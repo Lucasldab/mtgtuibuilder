@@ -13,8 +13,9 @@ flate2 = "1"
 dirs = "5"
 anyhow = "1"
 # Cards are JPEG; skipping the other decoders keeps build time down.
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 ratatui-image = { version = "9", default-features = false }
+base64 = "0.22"
 
 [profile.release]
 lto = true

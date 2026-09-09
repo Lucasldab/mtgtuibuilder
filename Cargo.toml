@@ -2,6 +2,9 @@
 name = "mtgtuibuilder"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Terminal Magic: the Gathering deck builder with Cardmarket prices"
+repository = "https://github.com/Lucasldab/mtgtuibuilder"
 
 [dependencies]
 ratatui = "0.29"

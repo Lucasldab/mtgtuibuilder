@@ -153,3 +153,11 @@ cargo test
 Tests that need the card cache skip themselves when it is absent, so
 `cargo test` passes on a clean checkout. `SHOW_UI=1 cargo test
 renders_a_real_commander_deck -- --nocapture` prints a rendered frame.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Third-party code and data are credited in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+Unaffiliated with Wizards of the Coast, Scryfall, Cardmarket, EDHREC and
+Archidekt.

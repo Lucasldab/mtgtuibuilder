@@ -56,9 +56,25 @@ mtgtuibuilder --refresh        # re-download; prices update daily upstream
 | `c` | set category |
 | `C` | set as commander |
 | `p` | choose printing (`0` resets to cheapest) |
+| `i` | toggle card image |
 | `s` / `S` | save / save as |
 | `?` | help |
 | `q` | quit |
+
+## Card images
+
+`i` toggles a preview of the selected card, using the pinned printing so the
+art matches the version being priced. Images render through kitty's graphics
+protocol, sixel or iTerm2 where available, and fall back to unicode
+half-blocks everywhere else.
+
+The preview takes its own column on terminals at least 120 columns wide;
+below that it replaces the stats pane. Images are fetched on a background
+thread and cached under `~/.cache/mtgtuibuilder/images/`, so scrolling never
+blocks on the network and a card is only ever downloaded once.
+
+Set `MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override protocol
+detection.
 
 ## Deck format
 

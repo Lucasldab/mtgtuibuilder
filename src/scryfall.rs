@@ -48,6 +48,7 @@ struct BulkEntry {
 /// which is what keeps this resilient to upstream additions.
 #[derive(Deserialize)]
 struct RawCard {
+    id: String,
     name: String,
     #[serde(default)]
     mana_cost: String,
@@ -182,6 +183,7 @@ fn rebuild(progress: &mut dyn FnMut(&str)) -> Result<()> {
             set_name: raw.set_name,
             number: raw.collector_number,
             eur,
+            id: raw.id,
         };
 
         grouped

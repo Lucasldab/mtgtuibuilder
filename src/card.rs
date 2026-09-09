@@ -12,6 +12,10 @@ pub struct Printing {
     pub set_name: String,
     pub number: String,
     pub eur: Option<f64>,
+    /// Scryfall id, which is all that is needed to address the card image.
+    /// Defaulted so a cache written before previews existed still loads.
+    #[serde(default)]
+    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

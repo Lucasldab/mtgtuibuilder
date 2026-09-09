@@ -4,7 +4,10 @@ use crate::card::CardDb;
 use crate::commander::{self, Issue};
 use crate::deck::{Board, COMMANDER, Deck, Entry};
 use crate::decklist;
+use crate::images::{self, Status};
 use crate::stats::{self, Stats};
+use ratatui_image::picker::Picker;
+use ratatui_image::protocol::StatefulProtocol;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
 
@@ -42,6 +45,15 @@ pub struct App {
     pub stats: Stats,
     pub price: (f64, usize),
     pub quit: bool,
+    /// Card image preview, toggled with `i`.
+    pub preview: bool,
+    pub loader: images::Loader,
+    /// None when the terminal has no graphics protocol and no font size to
+    /// map pixels onto cells -- previews are simply unavailable then.
+    pub picker: Option<Picker>,
+    pub protocol: Option<StatefulProtocol>,
+    /// Which card id `protocol` was built for, so moving the cursor swaps art.
+    protocol_id: Option<String>,
     /// Set after a quit attempt with unsaved changes, cleared by any other key.
     confirm_quit: bool,
 }
@@ -64,6 +76,11 @@ impl App {
             stats: Stats::default(),
             price: (0.0, 0),
             quit: false,
+            preview: false,
+            loader: images::Loader::new(),
+            picker: None,
+            protocol: None,
+            protocol_id: None,
             confirm_quit: false,
         };
         app.refresh();
@@ -249,6 +266,17 @@ impl App {
                     .map(|p| p.display().to_string())
                     .unwrap_or_default();
             }
+            KeyCode::Char('i') => {
+                self.preview = !self.preview;
+                if !self.preview {
+                    // Drop the encoded image so the protocol cannot repaint
+                    // over the pane that replaced it.
+                    self.protocol = None;
+                    self.protocol_id = None;
+                } else if self.picker.is_none() {
+                    self.status = "No image protocol -- terminal has no graphics support".into();
+                }
+            }
             KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
         }
@@ -378,6 +406,51 @@ impl App {
         }
     }
 
+    /// Scryfall id of the image for the selected card, honouring a pinned
+    /// printing so the preview matches the version being priced.
+    pub fn selected_image_id(&self) -> Option<String> {
+        let idx = self.selected_entry()?;
+        let entry = &self.deck.board(self.board)[idx];
+        let card = self.db.get(&entry.name)?;
+        let printing = card.printing(entry.set.as_deref(), entry.number.as_deref())?;
+        (!printing.id.is_empty()).then(|| printing.id.clone())
+    }
+
+    /// Status of the selected card's image, for the placeholder text.
+    pub fn image_status(&self) -> Option<Status> {
+        self.loader.status(&self.selected_image_id()?)
+    }
+
+    /// Requests and installs the selected card's image. Called once per frame;
+    /// everything slow happens on the loader's thread.
+    pub fn tick_images(&mut self) {
+        if !self.preview {
+            return;
+        }
+        let Some(id) = self.selected_image_id() else {
+            self.protocol = None;
+            self.protocol_id = None;
+            return;
+        };
+        self.loader.request(&id);
+        self.loader.poll();
+
+        if self.protocol_id.as_deref() == Some(id.as_str()) {
+            return;
+        }
+        // The cursor moved, or the image for it has just landed.
+        match (self.picker.as_ref(), self.loader.get(&id)) {
+            (Some(picker), Some(img)) => {
+                self.protocol = Some(picker.new_resize_protocol(img.clone()));
+                self.protocol_id = Some(id);
+            }
+            _ => {
+                self.protocol = None;
+                self.protocol_id = None;
+            }
+        }
+    }
+
     fn save(&mut self) {
         let Some(path) = self.deck.path.clone() else {
             self.mode = Mode::SaveAs;
@@ -428,6 +501,7 @@ mod tests {
                     set_name: format!("{} set", set.to_uppercase()),
                     number: number.into(),
                     eur: Some(eur),
+                    id: format!("{set}-{number}"),
                 })
                 .collect(),
         };
@@ -471,6 +545,44 @@ mod tests {
         press(&mut app, 'g');
         assert!(app.selected_entry().is_some(), "g left the cursor on a header");
         assert_eq!(app.cursor, 1, "g should land on the first card under the first header");
+    }
+
+    #[test]
+    fn i_toggles_the_preview() {
+        let mut app = app_with("1x Sol Ring [Ramp]\n");
+        assert!(!app.preview);
+        press(&mut app, 'i');
+        assert!(app.preview);
+        press(&mut app, 'i');
+        assert!(!app.preview);
+    }
+
+    #[test]
+    fn image_id_follows_the_pinned_printing() {
+        let mut app = app_with("1x Sol Ring [Ramp]\n");
+        // Unpinned, so the cheapest printing's image is the one shown.
+        assert_eq!(app.selected_image_id().as_deref(), Some("ltc-292"));
+        press(&mut app, 'p');
+        app.on_key(KeyEvent::from(KeyCode::Down));
+        app.on_key(KeyEvent::from(KeyCode::Enter));
+        assert_eq!(app.selected_image_id().as_deref(), Some("c21-263"));
+    }
+
+    #[test]
+    fn turning_the_preview_off_drops_the_protocol() {
+        let mut app = app_with("1x Sol Ring [Ramp]\n");
+        press(&mut app, 'i');
+        app.protocol_id = Some("stale".into());
+        press(&mut app, 'i');
+        assert!(app.protocol.is_none());
+        assert!(app.protocol_id.is_none(), "stale id would block the next load");
+    }
+
+    #[test]
+    fn tick_is_a_no_op_while_the_preview_is_off() {
+        let mut app = app_with("1x Sol Ring [Ramp]\n");
+        app.tick_images();
+        assert!(app.loader.status("ltc-292").is_none(), "fetched with preview off");
     }
 
     #[test]

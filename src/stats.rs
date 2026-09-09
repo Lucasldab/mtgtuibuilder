@@ -83,6 +83,7 @@ mod tests {
                 set_name: "Test".into(),
                 number: "1".into(),
                 eur: Some(2.50),
+                id: String::new(),
             }],
         }
     }

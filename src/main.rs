@@ -5,6 +5,7 @@ mod card;
 mod commander;
 mod deck;
 mod decklist;
+mod images;
 mod scryfall;
 mod stats;
 mod ui;
@@ -19,6 +20,7 @@ use crossterm::execute;
 use deck::Deck;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui_image::picker::{Picker, ProtocolType};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -35,6 +37,9 @@ ARGS:
 OPTIONS:
     -r, --refresh     Re-download the Scryfall bulk card data
     -h, --help        Show this help
+
+ENV:
+    MTGTUI_IMAGE_PROTOCOL   force kitty|sixel|iterm2|halfblocks for previews
 
 Decks are plain text, round-trip with Archidekt and Moxfield:
     1x Sol Ring (ltc) 292 [Ramp]
@@ -75,6 +80,7 @@ fn main() -> Result<()> {
     };
 
     let mut app = App::new(db, deck);
+    app.picker = Some(build_picker());
     if let Some(stamp) = scryfall::cache_stamp() {
         app.status = format!("prices from {}", &stamp[..stamp.len().min(10)]);
     }
@@ -83,6 +89,59 @@ fn main() -> Result<()> {
     let result = run(&mut terminal, &mut app);
     restore(&mut terminal)?;
     result
+}
+
+/// Builds the image picker without querying the terminal over stdin.
+///
+/// ratatui-image's `from_query_stdio` spawns a thread that enables raw mode,
+/// reads a reply from stdin, then disables raw mode. If the terminal never
+/// answers -- a bare TTY, a detached multiplexer, anything piped -- the call
+/// times out but that thread keeps running: it holds stdin so the TUI receives
+/// no keys, and it later disables the raw mode the TUI had switched on. The
+/// font size comes from an ioctl instead and the protocol from the
+/// environment, so nothing ever reads stdin behind the event loop's back.
+fn build_picker() -> Picker {
+    let font_size = crossterm::terminal::window_size()
+        .ok()
+        .filter(|w| w.width > 0 && w.height > 0 && w.columns > 0 && w.rows > 0)
+        .map(|w| (w.width / w.columns, w.height / w.rows))
+        // Only the rendered aspect ratio depends on this, and terminals
+        // running under tmux report no pixel size at all.
+        .unwrap_or((8, 16));
+
+    // Deprecated upstream in favour of `from_query_stdio`, which is precisely
+    // the function whose orphaned thread breaks the event loop. `halfblocks`,
+    // the other suggested replacement, would give up graphics entirely.
+    #[allow(deprecated)]
+    let mut picker = Picker::from_fontsize(font_size);
+
+    // Escape hatch for wrong detection, and for forcing halfblocks to see the
+    // image as text.
+    if let Ok(forced) = std::env::var("MTGTUI_IMAGE_PROTOCOL") {
+        let forced = match forced.to_lowercase().as_str() {
+            "kitty" => Some(ProtocolType::Kitty),
+            "sixel" => Some(ProtocolType::Sixel),
+            "iterm2" => Some(ProtocolType::Iterm2),
+            "halfblocks" => Some(ProtocolType::Halfblocks),
+            _ => None,
+        };
+        if let Some(p) = forced {
+            picker.set_protocol_type(p);
+            return picker;
+        }
+    }
+
+    // from_fontsize only guesses iTerm2 from the environment, so kitty -- the
+    // one we can identify reliably without a query -- is filled in here.
+    if matches!(picker.protocol_type(), ProtocolType::Halfblocks) && kitty_from_env() {
+        picker.set_protocol_type(ProtocolType::Kitty);
+    }
+    picker
+}
+
+fn kitty_from_env() -> bool {
+    std::env::var_os("KITTY_WINDOW_ID").is_some()
+        || std::env::var("TERM").is_ok_and(|t| t.contains("kitty"))
 }
 
 fn setup() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
@@ -104,6 +163,7 @@ fn run(
     app: &mut App,
 ) -> Result<()> {
     loop {
+        app.tick_images();
         terminal.draw(|f| ui::draw(f, app))?;
 
         // Poll rather than block so a resize repaints promptly.

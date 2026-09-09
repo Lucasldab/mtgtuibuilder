@@ -9,6 +9,8 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui_image::StatefulImage;
+use ratatui_image::protocol::StatefulProtocol;
 
 const ACCENT: Color = Color::Rgb(0x9A, 0x6D, 0xD7);
 const ACCENT_DIM: Color = Color::Rgb(0x7A, 0x3A, 0xAF);
@@ -20,19 +22,51 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(f.area());
 
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
-        .split(outer[0]);
-
-    draw_deck(f, app, panes[0]);
-
-    let right = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(8), Constraint::Percentage(45)])
-        .split(panes[1]);
-    draw_stats(f, app, right[0]);
-    draw_legality(f, app, right[1]);
+    // The preview earns its own column only when there is width for three;
+    // below that it takes the stats pane's place rather than squeezing both.
+    let wide = outer[0].width >= 120;
+    if app.preview && wide {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(46),
+                Constraint::Percentage(30),
+                Constraint::Min(26),
+            ])
+            .split(outer[0]);
+        draw_deck(f, app, cols[0]);
+        let right = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Percentage(45)])
+            .split(cols[1]);
+        draw_stats(f, app, right[0]);
+        draw_legality(f, app, right[1]);
+        draw_preview(f, app, cols[2]);
+    } else if app.preview {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(56), Constraint::Percentage(44)])
+            .split(outer[0]);
+        draw_deck(f, app, cols[0]);
+        let right = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Percentage(35)])
+            .split(cols[1]);
+        draw_preview(f, app, right[0]);
+        draw_legality(f, app, right[1]);
+    } else {
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
+            .split(outer[0]);
+        draw_deck(f, app, panes[0]);
+        let right = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(8), Constraint::Percentage(45)])
+            .split(panes[1]);
+        draw_stats(f, app, right[0]);
+        draw_legality(f, app, right[1]);
+    }
 
     draw_status(f, app, outer[1]);
 
@@ -209,6 +243,45 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
             .title(Span::styled(" Stats ", Style::default().fg(ACCENT))),
     );
     f.render_widget(widget, area);
+}
+
+fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ACCENT_DIM))
+        .title(Span::styled(" Image ", Style::default().fg(ACCENT)));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // Resolved before the mutable borrow of the protocol below.
+    let placeholder = if app.picker.is_none() {
+        "no graphics protocol"
+    } else {
+        match app.image_status() {
+            Some(crate::images::Status::Loading) => "loading…",
+            Some(crate::images::Status::Failed) => "image unavailable",
+            Some(crate::images::Status::Ready) => "decoding…",
+            None => "no card selected",
+        }
+    };
+
+    match app.protocol.as_mut() {
+        Some(protocol) => {
+            f.render_stateful_widget(
+                StatefulImage::<StatefulProtocol>::default(),
+                inner,
+                protocol,
+            );
+        }
+        None => {
+            f.render_widget(
+                Paragraph::new(placeholder)
+                    .style(Style::default().fg(MUTED))
+                    .alignment(Alignment::Center),
+                inner,
+            );
+        }
+    }
 }
 
 fn pip_color(c: char) -> Color {
@@ -406,6 +479,7 @@ fn draw_help(f: &mut Frame) {
         ("c", "set category"),
         ("C", "set as commander"),
         ("p", "choose printing"),
+        ("i", "toggle card image"),
         ("s / S", "save / save as"),
         ("?", "this help"),
         ("q", "quit"),
@@ -478,6 +552,7 @@ mod tests {
                 set_name: "Test Set".into(),
                 number: "1".into(),
                 eur: Some(eur),
+                id: String::new(),
             }],
         };
         crate::card::CardDb::new(vec![
@@ -548,11 +623,66 @@ mod tests {
     }
 
     #[test]
+    fn preview_gets_its_own_column_when_wide() {
+        let mut app = App::new(db(), decklist::parse("1x Sol Ring [Ramp]\n"));
+        app.preview = true;
+        let out = render(&mut app, 140, 40);
+        assert!(out.contains("Image"), "preview pane missing:\n{out}");
+        assert!(out.contains("Curve"), "stats should survive on a wide terminal");
+    }
+
+    #[test]
+    fn preview_replaces_stats_when_narrow() {
+        let mut app = App::new(db(), decklist::parse("1x Sol Ring [Ramp]\n"));
+        app.preview = true;
+        let out = render(&mut app, 100, 40);
+        assert!(out.contains("Image"), "preview pane missing:\n{out}");
+        assert!(!out.contains("Curve"), "stats should yield to the preview when narrow");
+        assert!(out.contains("Commander"), "legality must stay visible");
+    }
+
+    #[test]
+    fn preview_explains_itself_without_a_graphics_protocol() {
+        let mut app = App::new(db(), decklist::parse("1x Sol Ring [Ramp]\n"));
+        app.preview = true;
+        app.picker = None;
+        let out = render(&mut app, 140, 40);
+        assert!(out.contains("no graphics protocol"), "missing explanation:\n{out}");
+    }
+
+    #[test]
+    fn ready_image_replaces_the_placeholder() {
+        use image::DynamicImage;
+        use ratatui_image::picker::Picker;
+        let mut app = App::new(db(), decklist::parse("1x Sol Ring [Ramp]\n"));
+        app.preview = true;
+        let picker = Picker::halfblocks();
+        app.protocol = Some(picker.new_resize_protocol(DynamicImage::new_rgb8(48, 68)));
+        app.picker = Some(picker);
+        let out = render(&mut app, 140, 40);
+        assert!(out.contains("Image"));
+        assert!(!out.contains("loading"), "placeholder shown despite a ready image");
+        assert!(!out.contains("no graphics protocol"));
+    }
+
+    #[test]
+    fn preview_off_restores_the_two_pane_layout() {
+        let mut app = App::new(db(), decklist::parse("1x Sol Ring [Ramp]\n"));
+        let out = render(&mut app, 140, 40);
+        assert!(!out.contains("Image"));
+        assert!(out.contains("Curve"));
+    }
+
+    #[test]
     fn survives_a_tiny_terminal() {
         // Panicking on a small window would take the whole app down.
         let deck = decklist::parse("1x Sol Ring [Ramp]\n");
         let mut app = App::new(db(), deck);
         for (w, h) in [(20u16, 6u16), (40, 10), (200, 60)] {
+            let _ = render(&mut app, w, h);
+        }
+        app.preview = true;
+        for (w, h) in [(20u16, 6u16), (40, 10), (119, 30), (200, 60)] {
             let _ = render(&mut app, w, h);
         }
     }

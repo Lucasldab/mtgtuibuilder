@@ -110,7 +110,8 @@ Two tmux details matter, both handled automatically:
 `e` lists what EDHREC's decks for your commander play that yours does not --
 the "what goes in the other 66 slots" question. Each row shows the share of
 eligible decks running the card, its synergy score, and its Cardmarket price
-from the local card data. `Enter` adds the highlighted card; `Esc` closes.
+from the local card data, with the highlighted card's art beside the list.
+`Enter` adds the highlighted card; `Esc` closes.
 
 Cards already in the deck or the maybeboard are filtered out, so the list only
 ever answers "what else".

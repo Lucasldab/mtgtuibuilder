@@ -537,10 +537,17 @@ impl App {
     /// Scryfall id of the image for the selected card, honouring a pinned
     /// printing so the preview matches the version being priced.
     pub fn selected_image_id(&self) -> Option<String> {
-        let idx = self.selected_entry()?;
-        let entry = &self.deck.board(self.board)[idx];
-        let card = self.db.get(&entry.name)?;
-        let printing = card.printing(entry.set.as_deref(), entry.number.as_deref())?;
+        let printing = if self.mode == Mode::Suggest {
+            // A suggestion names no printing, so it shows the cheapest -- the
+            // same one its listed price refers to.
+            let name = &self.visible_suggestions().get(self.suggest_cursor)?.name;
+            self.db.get(name)?.cheapest()?
+        } else {
+            let idx = self.selected_entry()?;
+            let entry = &self.deck.board(self.board)[idx];
+            let card = self.db.get(&entry.name)?;
+            card.printing(entry.set.as_deref(), entry.number.as_deref())?
+        };
         (!printing.id.is_empty()).then(|| printing.id.clone())
     }
 
@@ -552,7 +559,8 @@ impl App {
     /// Requests and installs the selected card's image. Called once per frame;
     /// everything slow happens on the loader's thread.
     pub fn tick_images(&mut self) {
-        if !self.preview {
+        // The suggestions pane always shows art; elsewhere it is opt-in.
+        if !self.preview && self.mode != Mode::Suggest {
             return;
         }
         let Some(id) = self.selected_image_id() else {
@@ -798,6 +806,27 @@ mod tests {
         // One left, so the cursor must have come back to it.
         assert_eq!(app.suggest_cursor, 0);
         assert_eq!(app.visible_suggestions().len(), 1);
+    }
+
+    #[test]
+    fn the_image_follows_the_suggestion_cursor() {
+        let mut app = app_with("1x Sol Ring [Commander]\n");
+        press(&mut app, 'e');
+        app.suggestions = vec![sugg("Forest"), sugg("Solemn Simulacrum")];
+        // Cheapest printing, matching the price the row shows.
+        assert_eq!(app.selected_image_id().as_deref(), Some("blb-280"));
+        press(&mut app, 'j');
+        assert_eq!(app.selected_image_id().as_deref(), Some("m21-234"));
+    }
+
+    #[test]
+    fn leaving_suggestions_returns_the_image_to_the_deck() {
+        let mut app = app_with("1x Sol Ring [Commander]\n");
+        press(&mut app, 'e');
+        app.suggestions = vec![sugg("Forest")];
+        assert_eq!(app.selected_image_id().as_deref(), Some("blb-280"));
+        app.on_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.selected_image_id().as_deref(), Some("ltc-292"));
     }
 
     #[test]

@@ -246,21 +246,8 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(widget, area);
 }
 
-fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
-    // Naming the protocol here is what turns "nothing appeared" into a
-    // diagnosable report.
-    let title = match app.picker.as_ref() {
-        Some(p) => format!(" Image — {:?} ", p.protocol_type()),
-        None => " Image ".to_string(),
-    };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(ACCENT_DIM))
-        .title(Span::styled(title, Style::default().fg(ACCENT)));
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    // Resolved before the mutable borrow of the protocol below.
+/// Draws the focused card's art into `area`, or says why it cannot.
+fn draw_image(f: &mut Frame, app: &mut App, inner: Rect) {
     let placeholder = if app.picker.is_none() {
         "no graphics protocol"
     } else {
@@ -305,6 +292,26 @@ fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
             );
         }
     }
+}
+
+fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    let title = match app.picker.as_ref() {
+        Some(p) => format!(" Image — {:?} ", p.protocol_type()),
+        None => " Image ".to_string(),
+    };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ACCENT_DIM))
+        .title(Span::styled(title, Style::default().fg(ACCENT)));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    // The suggestions overlay owns the image while it is open; drawing here
+    // too would place the same image twice, in two different spots.
+    if app.mode == Mode::Suggest {
+        return;
+    }
+    draw_image(f, app, inner);
 }
 
 fn pip_color(c: char) -> Color {
@@ -488,9 +495,16 @@ fn draw_printing(f: &mut Frame, app: &App) {
     f.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_suggestions(f: &mut Frame, app: &App) {
-    let area = centered(78, 76, f.area());
+fn draw_suggestions(f: &mut Frame, app: &mut App) {
+    let area = centered(90, 82, f.area());
     f.render_widget(Clear, area);
+
+    // The art sits beside the list, showing whatever row is highlighted.
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(46), Constraint::Length(34)])
+        .split(area);
+    let (list_area, art_area) = (cols[0], cols[1]);
 
     let commander = app
         .deck
@@ -559,8 +573,9 @@ fn draw_suggestions(f: &mut Frame, app: &App) {
                         .border_style(Style::default().fg(ACCENT))
                         .title(Span::styled(title, Style::default().fg(ACCENT))),
                 ),
-            area,
+            list_area,
         );
+        draw_suggestion_art(f, app, art_area);
         return;
     }
 
@@ -578,7 +593,23 @@ fn draw_suggestions(f: &mut Frame, app: &App) {
                 )),
         )
         .highlight_style(Style::default().bg(ACCENT_DIM).add_modifier(Modifier::BOLD));
-    f.render_stateful_widget(list, area, &mut state);
+    f.render_stateful_widget(list, list_area, &mut state);
+    draw_suggestion_art(f, app, art_area);
+}
+
+fn draw_suggestion_art(f: &mut Frame, app: &mut App, area: Rect) {
+    let name = app
+        .visible_suggestions()
+        .get(app.suggest_cursor)
+        .map(|s| truncate(&s.name, 30))
+        .unwrap_or_default();
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(ACCENT_DIM))
+        .title(Span::styled(format!(" {name} "), Style::default().fg(ACCENT)));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    draw_image(f, app, inner);
 }
 
 fn draw_help(f: &mut Frame) {

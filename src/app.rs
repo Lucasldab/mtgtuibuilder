@@ -435,6 +435,13 @@ impl App {
         self.loader.request(&id);
         self.loader.poll();
 
+        // The protocol encodes during render and stores any failure rather
+        // than returning it; unchecked, a failed encode is indistinguishable
+        // from a blank pane.
+        if let Some(Err(e)) = self.protocol.as_mut().and_then(|p| p.last_encoding_result()) {
+            self.status = format!("image encode failed: {e}");
+        }
+
         if self.protocol_id.as_deref() == Some(id.as_str()) {
             return;
         }

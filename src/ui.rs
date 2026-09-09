@@ -246,10 +246,16 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_preview(f: &mut Frame, app: &mut App, area: Rect) {
+    // Naming the protocol here is what turns "nothing appeared" into a
+    // diagnosable report.
+    let title = match app.picker.as_ref() {
+        Some(p) => format!(" Image — {:?} ", p.protocol_type()),
+        None => " Image ".to_string(),
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ACCENT_DIM))
-        .title(Span::styled(" Image ", Style::default().fg(ACCENT)));
+        .title(Span::styled(title, Style::default().fg(ACCENT)));
     let inner = block.inner(area);
     f.render_widget(block, area);
 

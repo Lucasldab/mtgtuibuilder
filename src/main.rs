@@ -37,6 +37,7 @@ ARGS:
 OPTIONS:
     -r, --refresh     Re-download the Scryfall bulk card data
     -h, --help        Show this help
+        --doctor      Report what the preview will do in this terminal
 
 ENV:
     MTGTUI_IMAGE_PROTOCOL   force kitty|sixel|iterm2|halfblocks for previews
@@ -56,6 +57,10 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             "-r" | "--refresh" => refresh = true,
+            "--doctor" => {
+                doctor();
+                return Ok(());
+            }
             other if other.starts_with('-') => {
                 eprintln!("unknown option: {other}");
                 std::process::exit(2);
@@ -142,6 +147,46 @@ fn build_picker() -> Picker {
 fn kitty_from_env() -> bool {
     std::env::var_os("KITTY_WINDOW_ID").is_some()
         || std::env::var("TERM").is_ok_and(|t| t.contains("kitty"))
+}
+
+/// Reports everything that decides whether a preview can render. Printed
+/// rather than guessed at, because the failure mode -- an empty pane -- looks
+/// identical no matter which stage broke.
+fn doctor() {
+    let env = |k: &str| std::env::var(k).unwrap_or_else(|_| "<unset>".into());
+
+    println!("terminal");
+    println!("  TERM                  {}", env("TERM"));
+    println!("  TERM_PROGRAM          {}", env("TERM_PROGRAM"));
+    println!("  KITTY_WINDOW_ID       {}", env("KITTY_WINDOW_ID"));
+    println!("  TMUX                  {}", env("TMUX"));
+    println!("  MTGTUI_IMAGE_PROTOCOL {}", env("MTGTUI_IMAGE_PROTOCOL"));
+
+    println!("\nwindow size (ioctl)");
+    match crossterm::terminal::window_size() {
+        Ok(w) => {
+            println!("  cells                 {}x{}", w.columns, w.rows);
+            println!("  pixels                {}x{}", w.width, w.height);
+            if w.width == 0 || w.height == 0 {
+                println!("  note                  no pixel size reported; font size falls back to 8x16");
+            }
+        }
+        Err(e) => println!("  failed                {e}"),
+    }
+
+    let picker = build_picker();
+    println!("\npreview");
+    println!("  font size             {:?}", picker.font_size());
+    println!("  protocol              {:?}", picker.protocol_type());
+    if matches!(picker.protocol_type(), ProtocolType::Halfblocks) {
+        println!("  note                  halfblocks renders as coloured text, not a real image");
+    }
+
+    let dir = images::image_dir();
+    let count = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
+    println!("\ncache");
+    println!("  cards                 {}", scryfall::cache_stamp().unwrap_or_else(|| "<none>".into()));
+    println!("  images                {count} files in {}", dir.display());
 }
 
 fn setup() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {

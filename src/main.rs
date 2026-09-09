@@ -116,28 +116,53 @@ fn build_picker() -> Picker {
     #[allow(deprecated)]
     let mut picker = Picker::from_fontsize(font_size);
 
-    // Escape hatch for wrong detection, and for forcing halfblocks to see the
-    // image as text.
-    if let Ok(forced) = std::env::var("MTGTUI_IMAGE_PROTOCOL") {
-        let forced = match forced.to_lowercase().as_str() {
-            "kitty" => Some(ProtocolType::Kitty),
-            "sixel" => Some(ProtocolType::Sixel),
-            "iterm2" => Some(ProtocolType::Iterm2),
-            "halfblocks" => Some(ProtocolType::Halfblocks),
-            _ => None,
-        };
-        if let Some(p) = forced {
-            picker.set_protocol_type(p);
-            return picker;
+    let chosen = choose_protocol(
+        picker.protocol_type(),
+        std::env::var("MTGTUI_IMAGE_PROTOCOL").ok().as_deref(),
+        std::env::var_os("TMUX").is_some(),
+        kitty_from_env(),
+    );
+    picker.set_protocol_type(chosen);
+    picker
+}
+
+/// Picks the graphics protocol.
+///
+/// Kitty's protocol does not survive tmux in practice. The image is sent as a
+/// passthrough sequence, which tmux drops entirely when the pane is not
+/// visible and which arrives at kitty without ever producing a placement --
+/// verified by screenshotting a real session: correct geometry on the wire
+/// (s=432,v=621 against a 12x27 cell, exactly the 36x23 pane), placeholders
+/// recognised by kitty, and an empty pane. `q=2` in the transmission
+/// suppresses every error kitty might report, so there is nothing to act on.
+///
+/// Halfblocks go through tmux as ordinary coloured cells and cannot be
+/// dropped, so they are the default there. Kitty remains available explicitly
+/// for anyone whose setup does work.
+fn choose_protocol(
+    detected: ProtocolType,
+    forced: Option<&str>,
+    in_tmux: bool,
+    kitty_env: bool,
+) -> ProtocolType {
+    if let Some(f) = forced {
+        match f.to_lowercase().as_str() {
+            "kitty" => return ProtocolType::Kitty,
+            "sixel" => return ProtocolType::Sixel,
+            "iterm2" => return ProtocolType::Iterm2,
+            "halfblocks" => return ProtocolType::Halfblocks,
+            _ => {}
         }
     }
-
-    // from_fontsize only guesses iTerm2 from the environment, so kitty -- the
-    // one we can identify reliably without a query -- is filled in here.
-    if matches!(picker.protocol_type(), ProtocolType::Halfblocks) && kitty_from_env() {
-        picker.set_protocol_type(ProtocolType::Kitty);
+    if in_tmux {
+        return ProtocolType::Halfblocks;
     }
-    picker
+    // from_fontsize only guesses iTerm2 from the environment, so kitty -- the
+    // one identifiable without a query -- is filled in here.
+    if matches!(detected, ProtocolType::Halfblocks) && kitty_env {
+        return ProtocolType::Kitty;
+    }
+    detected
 }
 
 /// Cell size in pixels, and where the number came from.
@@ -218,8 +243,11 @@ fn doctor() {
     println!("\npreview");
     println!("  font size             {:?} (from {source})", picker.font_size());
     println!("  protocol              {:?}", picker.protocol_type());
-    if matches!(picker.protocol_type(), ProtocolType::Halfblocks) {
-        println!("  note                  halfblocks renders as coloured text, not a real image");
+    if matches!(picker.protocol_type(), ProtocolType::Halfblocks)
+        && std::env::var_os("TMUX").is_some()
+    {
+        println!("  note                  halfblocks under tmux: kitty graphics are dropped by");
+        println!("                        tmux passthrough. MTGTUI_IMAGE_PROTOCOL=kitty overrides.");
     }
 
     let dir = images::image_dir();
@@ -277,6 +305,51 @@ fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tmux_defaults_to_halfblocks() {
+        // Kitty graphics do not survive tmux passthrough; halfblocks do.
+        assert_eq!(
+            choose_protocol(ProtocolType::Kitty, None, true, true),
+            ProtocolType::Halfblocks
+        );
+    }
+
+    #[test]
+    fn kitty_is_used_outside_tmux() {
+        assert_eq!(
+            choose_protocol(ProtocolType::Halfblocks, None, false, true),
+            ProtocolType::Kitty
+        );
+    }
+
+    #[test]
+    fn override_beats_the_tmux_default() {
+        assert_eq!(
+            choose_protocol(ProtocolType::Halfblocks, Some("kitty"), true, true),
+            ProtocolType::Kitty
+        );
+        assert_eq!(
+            choose_protocol(ProtocolType::Kitty, Some("halfblocks"), false, true),
+            ProtocolType::Halfblocks
+        );
+    }
+
+    #[test]
+    fn unknown_override_is_ignored() {
+        assert_eq!(
+            choose_protocol(ProtocolType::Sixel, Some("nonsense"), false, false),
+            ProtocolType::Sixel
+        );
+    }
+
+    #[test]
+    fn detection_is_kept_when_nothing_applies() {
+        assert_eq!(
+            choose_protocol(ProtocolType::Iterm2, None, false, false),
+            ProtocolType::Iterm2
+        );
+    }
 
     #[test]
     fn parses_tmux_cell_size() {

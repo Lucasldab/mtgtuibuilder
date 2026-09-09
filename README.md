@@ -77,6 +77,15 @@ Set `MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override protocol
 detection, and `--doctor` to report what the preview will actually do in the
 current terminal.
 
+**Under tmux the default is halfblocks**, because kitty's graphics protocol
+does not survive it. The image travels as a passthrough sequence that tmux
+drops outright when the pane is not visible, and which otherwise reaches kitty
+without ever producing a placement -- confirmed by screenshotting a real
+session: correct geometry on the wire, placeholders recognised, empty pane, and
+`q=2` in the transmission suppressing any error kitty might have reported.
+Halfblocks are ordinary coloured cells, so tmux cannot drop them. Outside tmux
+kitty is used normally, and `MTGTUI_IMAGE_PROTOCOL=kitty` forces it anywhere.
+
 ### Inside tmux
 
 Two tmux details matter, both handled automatically:
@@ -88,9 +97,8 @@ Two tmux details matter, both handled automatically:
 - Re-transmission. With `allow-passthrough on` (the common setting) tmux
   discards graphics from a pane that is not currently visible, and the image is
   otherwise transmitted only once. The app requests focus reporting and
-  re-transmits when the pane comes back into view, so launching it in a
-  background window still works. Toggling `i` off and on forces the same thing
-  by hand.
+  re-transmits when the pane comes back into view. This only matters when
+  kitty is forced, since the tmux default is halfblocks.
 
 ## Deck format
 

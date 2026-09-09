@@ -20,6 +20,7 @@ use crossterm::execute;
 use deck::Deck;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui_image::FontSize;
 use ratatui_image::picker::{Picker, ProtocolType};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -106,13 +107,7 @@ fn main() -> Result<()> {
 /// font size comes from an ioctl instead and the protocol from the
 /// environment, so nothing ever reads stdin behind the event loop's back.
 fn build_picker() -> Picker {
-    let font_size = crossterm::terminal::window_size()
-        .ok()
-        .filter(|w| w.width > 0 && w.height > 0 && w.columns > 0 && w.rows > 0)
-        .map(|w| (w.width / w.columns, w.height / w.rows))
-        // Only the rendered aspect ratio depends on this, and terminals
-        // running under tmux report no pixel size at all.
-        .unwrap_or((8, 16));
+    let (font_size, _source) = font_size();
 
     // Deprecated upstream in favour of `from_query_stdio`, which is precisely
     // the function whose orphaned thread breaks the event loop. `halfblocks`,
@@ -142,6 +137,49 @@ fn build_picker() -> Picker {
         picker.set_protocol_type(ProtocolType::Kitty);
     }
     picker
+}
+
+/// Cell size in pixels, and where the number came from.
+///
+/// This is not cosmetic: with kitty's unicode placeholders the image is
+/// transmitted sized to a cell grid derived from it, so a wrong font size
+/// makes the image span the wrong number of cells and land outside the
+/// placeholders that are supposed to show it -- which looks like no image
+/// at all rather than a badly scaled one.
+fn font_size() -> (FontSize, &'static str) {
+    if let Some(size) = crossterm::terminal::window_size()
+        .ok()
+        .filter(|w| w.width > 0 && w.height > 0 && w.columns > 0 && w.rows > 0)
+        .map(|w| (w.width / w.columns, w.height / w.rows))
+    {
+        return (size, "ioctl");
+    }
+
+    // Terminals under tmux report no pixel size through the ioctl, but tmux
+    // has queried the outer terminal itself and will hand over the answer.
+    if std::env::var_os("TMUX").is_some() {
+        if let Some(size) = tmux_cell_size() {
+            return (size, "tmux");
+        }
+    }
+
+    ((8, 16), "fallback")
+}
+
+fn tmux_cell_size() -> Option<FontSize> {
+    let out = std::process::Command::new("tmux")
+        .args(["display-message", "-p", "#{client_cell_width}x#{client_cell_height}"])
+        .output()
+        .ok()?;
+    parse_cell_size(&String::from_utf8_lossy(&out.stdout))
+}
+
+fn parse_cell_size(s: &str) -> Option<FontSize> {
+    let (w, h) = s.trim().split_once('x')?;
+    let w: u16 = w.trim().parse().ok()?;
+    let h: u16 = h.trim().parse().ok()?;
+    // tmux reports zeroes when it has no answer from the outer terminal.
+    (w > 0 && h > 0).then_some((w, h))
 }
 
 fn kitty_from_env() -> bool {
@@ -174,9 +212,10 @@ fn doctor() {
         Err(e) => println!("  failed                {e}"),
     }
 
+    let (_, source) = font_size();
     let picker = build_picker();
     println!("\npreview");
-    println!("  font size             {:?}", picker.font_size());
+    println!("  font size             {:?} (from {source})", picker.font_size());
     println!("  protocol              {:?}", picker.protocol_type());
     if matches!(picker.protocol_type(), ProtocolType::Halfblocks) {
         println!("  note                  halfblocks renders as coloured text, not a real image");
@@ -223,5 +262,30 @@ fn run(
         if app.quit {
             return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_tmux_cell_size() {
+        assert_eq!(parse_cell_size("12x27\n"), Some((12, 27)));
+        assert_eq!(parse_cell_size(" 8x16 "), Some((8, 16)));
+    }
+
+    #[test]
+    fn rejects_tmux_zeroes() {
+        // tmux prints zeroes when the outer terminal never answered.
+        assert_eq!(parse_cell_size("0x0"), None);
+        assert_eq!(parse_cell_size("12x0"), None);
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        assert_eq!(parse_cell_size(""), None);
+        assert_eq!(parse_cell_size("12"), None);
+        assert_eq!(parse_cell_size("axb"), None);
     }
 }

@@ -5,6 +5,7 @@ mod card;
 mod commander;
 mod deck;
 mod decklist;
+mod edhrec;
 mod images;
 mod kitty;
 mod scryfall;
@@ -282,6 +283,7 @@ fn run(
 ) -> Result<()> {
     loop {
         app.tick_images();
+        app.tick_suggestions();
         terminal.draw(|f| ui::draw(f, app))?;
 
         // Poll rather than block so a resize repaints promptly.

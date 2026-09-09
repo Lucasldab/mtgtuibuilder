@@ -4,6 +4,7 @@ use crate::card::CardDb;
 use crate::commander::{self, Issue};
 use crate::deck::{Board, COMMANDER, Deck, Entry};
 use crate::decklist;
+use crate::edhrec::{self, Suggestion};
 use crate::images::{self, Status};
 use crate::kitty::{self, Placement};
 use ratatui::layout::Rect;
@@ -20,6 +21,7 @@ pub enum Mode {
     Printing,
     Category,
     SaveAs,
+    Suggest,
     Help,
 }
 
@@ -43,6 +45,13 @@ pub struct App {
     pub result_cursor: usize,
     pub printing_cursor: usize,
     pub status: String,
+    /// EDHREC suggestions for the current commander, unfiltered; what the user
+    /// sees is this minus what the deck already holds.
+    pub suggestions: Vec<Suggestion>,
+    pub suggest_cursor: usize,
+    pub suggest_status: String,
+    pub edhrec: edhrec::Loader,
+    suggest_for: Option<String>,
     pub issues: Vec<Issue>,
     pub stats: Stats,
     pub price: (f64, usize),
@@ -84,6 +93,11 @@ impl App {
             result_cursor: 0,
             printing_cursor: 0,
             status: String::new(),
+            suggestions: Vec::new(),
+            suggest_cursor: 0,
+            suggest_status: String::new(),
+            edhrec: edhrec::Loader::new(),
+            suggest_for: None,
             issues: Vec::new(),
             stats: Stats::default(),
             price: (0.0, 0),
@@ -186,6 +200,7 @@ impl App {
             Mode::Search => self.key_search(key),
             Mode::Printing => self.key_printing(key),
             Mode::Category | Mode::SaveAs => self.key_input(key),
+            Mode::Suggest => self.key_suggest(key),
             Mode::Help => {
                 self.mode = Mode::Deck;
             }
@@ -295,6 +310,7 @@ impl App {
                     self.status = "No image protocol -- terminal has no graphics support".into();
                 }
             }
+            KeyCode::Char('e') => self.open_suggestions(),
             KeyCode::Char('?') => self.mode = Mode::Help,
             _ => {}
         }
@@ -421,6 +437,87 @@ impl App {
             }
             KeyCode::Char(c) => self.input.push(c),
             _ => {}
+        }
+    }
+
+    /// Opens the suggestions pane, fetching for this commander the first time.
+    fn open_suggestions(&mut self) {
+        let Some(cmd) = self.deck.commander().map(|e| e.name.clone()) else {
+            self.status = "Set a commander first (C) -- suggestions are per commander".into();
+            return;
+        };
+        self.mode = Mode::Suggest;
+        self.suggest_cursor = 0;
+
+        let slug = edhrec::slug(&cmd);
+        if self.suggest_for.as_deref() == Some(slug.as_str()) {
+            return;
+        }
+        self.suggestions.clear();
+        self.suggest_status = format!("Loading suggestions for {cmd}...");
+        self.edhrec.request(&slug);
+    }
+
+    /// Suggestions minus what the deck already has, which is the whole point:
+    /// the list answers "what else", not "what is popular".
+    pub fn visible_suggestions(&self) -> Vec<&Suggestion> {
+        self.suggestions
+            .iter()
+            .filter(|s| {
+                !self.deck.main.iter().any(|e| e.name == s.name)
+                    && !self.deck.maybe.iter().any(|e| e.name == s.name)
+            })
+            .collect()
+    }
+
+    fn key_suggest(&mut self, key: KeyEvent) {
+        let len = self.visible_suggestions().len();
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => self.mode = Mode::Deck,
+            KeyCode::Char('j') | KeyCode::Down => {
+                if self.suggest_cursor + 1 < len {
+                    self.suggest_cursor += 1;
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.suggest_cursor = self.suggest_cursor.saturating_sub(1)
+            }
+            KeyCode::Enter => {
+                if let Some(name) = self
+                    .visible_suggestions()
+                    .get(self.suggest_cursor)
+                    .map(|s| s.name.clone())
+                {
+                    self.deck.add(self.board, Entry::new(name.clone()));
+                    self.refresh();
+                    self.status = format!("Added {name}");
+                    // The list just shrank by one; keep the cursor in range.
+                    let len = self.visible_suggestions().len();
+                    if self.suggest_cursor >= len {
+                        self.suggest_cursor = len.saturating_sub(1);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Collects a finished EDHREC fetch.
+    pub fn tick_suggestions(&mut self) {
+        let Some((slug, result)) = self.edhrec.poll() else {
+            return;
+        };
+        match result {
+            Ok(list) => {
+                self.suggest_status = String::new();
+                self.suggestions = list;
+                self.suggest_for = Some(slug);
+                self.suggest_cursor = 0;
+            }
+            Err(e) => {
+                self.suggestions.clear();
+                self.suggest_status = format!("EDHREC lookup failed: {e}");
+            }
         }
     }
 
@@ -634,6 +731,81 @@ mod tests {
         press(&mut app, 'g');
         assert!(app.selected_entry().is_some(), "g left the cursor on a header");
         assert_eq!(app.cursor, 1, "g should land on the first card under the first header");
+    }
+
+    fn sugg(name: &str) -> Suggestion {
+        Suggestion {
+            name: name.into(),
+            section: "Top Cards".into(),
+            num_decks: 50,
+            potential_decks: 100,
+            synergy: 0.1,
+        }
+    }
+
+    #[test]
+    fn suggestions_need_a_commander() {
+        let mut app = app_with("1x Sol Ring [Ramp]\n");
+        press(&mut app, 'e');
+        assert_eq!(app.mode, Mode::Deck, "opened without a commander");
+        assert!(app.status.contains("commander"), "{}", app.status);
+    }
+
+    #[test]
+    fn suggestions_open_with_a_commander() {
+        let mut app = app_with("1x Sol Ring [Commander]\n");
+        press(&mut app, 'e');
+        assert_eq!(app.mode, Mode::Suggest);
+    }
+
+    #[test]
+    fn cards_already_in_the_deck_are_not_suggested() {
+        // The whole point: this answers "what else", not "what is popular".
+        let mut app = app_with("1x Sol Ring [Commander]\n1x Forest [Lands]\n");
+        app.suggestions = vec![sugg("Sol Ring"), sugg("Forest"), sugg("Solemn Simulacrum")];
+        let names: Vec<&str> = app.visible_suggestions().iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Solemn Simulacrum"]);
+    }
+
+    #[test]
+    fn maybeboard_cards_are_not_suggested_either() {
+        let mut app = app_with("1x Sol Ring [Commander]\n\nMaybeboard\n1x Forest\n");
+        app.suggestions = vec![sugg("Forest"), sugg("Solemn Simulacrum")];
+        assert_eq!(app.visible_suggestions().len(), 1);
+    }
+
+    #[test]
+    fn adding_a_suggestion_removes_it_from_the_list() {
+        let mut app = app_with("1x Sol Ring [Commander]\n");
+        // Opening clears any stale list for a different commander, so the
+        // suggestions are installed after.
+        press(&mut app, 'e');
+        app.suggestions = vec![sugg("Forest"), sugg("Solemn Simulacrum")];
+        app.on_key(KeyEvent::from(KeyCode::Enter));
+        assert!(app.deck.main.iter().any(|e| e.name == "Forest"));
+        let names: Vec<&str> = app.visible_suggestions().iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Solemn Simulacrum"]);
+    }
+
+    #[test]
+    fn cursor_stays_in_range_as_the_list_shrinks() {
+        let mut app = app_with("1x Sol Ring [Commander]\n");
+        press(&mut app, 'e');
+        app.suggestions = vec![sugg("Forest"), sugg("Solemn Simulacrum")];
+        press(&mut app, 'j');
+        assert_eq!(app.suggest_cursor, 1);
+        app.on_key(KeyEvent::from(KeyCode::Enter));
+        // One left, so the cursor must have come back to it.
+        assert_eq!(app.suggest_cursor, 0);
+        assert_eq!(app.visible_suggestions().len(), 1);
+    }
+
+    #[test]
+    fn escape_closes_the_suggestions() {
+        let mut app = app_with("1x Sol Ring [Commander]\n");
+        press(&mut app, 'e');
+        app.on_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::Deck);
     }
 
     #[test]

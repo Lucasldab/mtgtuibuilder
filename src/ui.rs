@@ -73,6 +73,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     match app.mode {
         Mode::Search => draw_search(f, app),
         Mode::Printing => draw_printing(f, app),
+        Mode::Suggest => draw_suggestions(f, app),
         Mode::Help => draw_help(f),
         _ => {}
     }
@@ -383,7 +384,7 @@ fn draw_status(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled(format!("{dirty}{path}  "), Style::default().fg(MUTED)),
                 Span::raw(app.status.clone()),
                 Span::styled(
-                    "   ? help  / add  p printing  c category  s save  q quit",
+                    "   ? help  / add  e suggest  p printing  c category  s save  q quit",
                     Style::default().fg(MUTED),
                 ),
             ])
@@ -487,6 +488,99 @@ fn draw_printing(f: &mut Frame, app: &App) {
     f.render_stateful_widget(list, area, &mut state);
 }
 
+fn draw_suggestions(f: &mut Frame, app: &App) {
+    let area = centered(78, 76, f.area());
+    f.render_widget(Clear, area);
+
+    let commander = app
+        .deck
+        .commander()
+        .map(|e| e.name.as_str())
+        .unwrap_or("no commander");
+
+    let visible = app.visible_suggestions();
+    let items: Vec<ListItem> = visible
+        .iter()
+        .map(|s| {
+            let price = app
+                .db
+                .get(&s.name)
+                .and_then(|c| c.cheapest())
+                .and_then(|p| p.eur);
+            Line::from(vec![
+                Span::raw(format!("{:<30}", truncate(&s.name, 29))),
+                Span::styled(
+                    format!("{:<19}", truncate(&s.section, 18)),
+                    Style::default().fg(MUTED),
+                ),
+                Span::styled(
+                    format!("{:>5.0}%  ", s.inclusion()),
+                    Style::default().fg(ACCENT),
+                ),
+                Span::styled(
+                    format!("{:>+5.2}  ", s.synergy),
+                    Style::default().fg(if s.synergy > 0.15 {
+                        Color::Green
+                    } else {
+                        MUTED
+                    }),
+                ),
+                Span::styled(
+                    match price {
+                        Some(v) => format!("€{v:.2}"),
+                        None => "—".into(),
+                    },
+                    Style::default().fg(MUTED),
+                ),
+            ])
+        })
+        .map(ListItem::new)
+        .collect();
+
+    let title = if app.suggest_status.is_empty() {
+        format!(" Suggestions for {} — {} cards ", truncate(commander, 28), visible.len())
+    } else {
+        format!(" Suggestions — {} ", app.suggest_status)
+    };
+
+    if items.is_empty() {
+        let msg = if app.suggest_status.is_empty() {
+            "nothing left to suggest"
+        } else {
+            &app.suggest_status
+        };
+        f.render_widget(
+            Paragraph::new(msg)
+                .style(Style::default().fg(MUTED))
+                .alignment(Alignment::Center)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(ACCENT))
+                        .title(Span::styled(title, Style::default().fg(ACCENT))),
+                ),
+            area,
+        );
+        return;
+    }
+
+    let mut state = ListState::default();
+    state.select(Some(app.suggest_cursor));
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(ACCENT))
+                .title(Span::styled(title, Style::default().fg(ACCENT)))
+                .title_bottom(Span::styled(
+                    " % of decks · synergy · Enter adds · Esc closes ",
+                    Style::default().fg(MUTED),
+                )),
+        )
+        .highlight_style(Style::default().bg(ACCENT_DIM).add_modifier(Modifier::BOLD));
+    f.render_stateful_widget(list, area, &mut state);
+}
+
 fn draw_help(f: &mut Frame) {
     let area = centered(56, 70, f.area());
     f.render_widget(Clear, area);
@@ -502,6 +596,7 @@ fn draw_help(f: &mut Frame) {
         ("C", "set as commander"),
         ("p", "choose printing"),
         ("i", "toggle card image"),
+        ("e", "EDHREC suggestions"),
         ("s / S", "save / save as"),
         ("?", "this help"),
         ("q", "quit"),

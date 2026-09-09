@@ -57,6 +57,7 @@ mtgtuibuilder --refresh        # re-download; prices update daily upstream
 | `C` | set as commander |
 | `p` | choose printing (`0` resets to cheapest) |
 | `i` | toggle card image |
+| `e` | EDHREC suggestions |
 | `s` / `S` | save / save as |
 | `?` | help |
 | `q` | quit |
@@ -103,6 +104,22 @@ Two tmux details matter, both handled automatically:
   otherwise transmitted only once. The app requests focus reporting and
   re-transmits when the pane comes back into view. This only matters when
   kitty is forced, since the tmux default is halfblocks.
+
+## Suggestions
+
+`e` lists what EDHREC's decks for your commander play that yours does not --
+the "what goes in the other 66 slots" question. Each row shows the share of
+eligible decks running the card, its synergy score, and its Cardmarket price
+from the local card data. `Enter` adds the highlighted card; `Esc` closes.
+
+Cards already in the deck or the maybeboard are filtered out, so the list only
+ever answers "what else".
+
+EDHREC publishes no documented API, so this reads the JSON its own pages are
+built from. That shape is unofficial and may change without notice: parsing is
+lenient, a failure degrades to a message rather than an error, and each
+commander is fetched once and cached under
+`~/.cache/mtgtuibuilder/edhrec/`.
 
 ## Deck format
 

@@ -252,7 +252,7 @@ fn draw_legality(f: &mut Frame, app: &App, area: Rect) {
     let title = if errors == 0 {
         " Commander ".to_string()
     } else {
-        format!(" Commander — {errors} problems ")
+        format!(" Commander — {errors} problem{} ", if errors == 1 { "" } else { "s" })
     };
 
     let widget = Paragraph::new(lines).wrap(Wrap { trim: true }).block(

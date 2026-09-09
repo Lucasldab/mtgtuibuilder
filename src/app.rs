@@ -81,9 +81,7 @@ impl App {
         if self.cursor > max {
             self.cursor = max;
         }
-        if matches!(self.rows.first(), Some(Row::Header(..))) && self.cursor == 0 {
-            self.move_cursor(1);
-        }
+        self.snap(1);
     }
 
     fn build_rows(&self) -> Vec<Row> {
@@ -136,6 +134,14 @@ impl App {
         }
     }
 
+    /// Nudges the cursor off a header without moving it when it already sits
+    /// on a card -- jumping to a boundary must land *on* the edge entry.
+    fn snap(&mut self, dir: i32) {
+        if matches!(self.rows.get(self.cursor), Some(Row::Header(..))) {
+            self.move_cursor(dir);
+        }
+    }
+
     pub fn on_key(&mut self, key: KeyEvent) {
         if key.code != KeyCode::Char('q') {
             self.confirm_quit = false;
@@ -165,11 +171,11 @@ impl App {
             KeyCode::Char('k') | KeyCode::Up => self.move_cursor(-1),
             KeyCode::Char('g') | KeyCode::Home => {
                 self.cursor = 0;
-                self.move_cursor(1);
+                self.snap(1);
             }
             KeyCode::Char('G') | KeyCode::End => {
                 self.cursor = self.rows.len().saturating_sub(1);
-                self.move_cursor(-1);
+                self.snap(-1);
             }
             KeyCode::Tab => {
                 self.board = match self.board {
@@ -447,6 +453,24 @@ mod tests {
         assert!(app.selected_entry().is_some(), "cursor parked on a header");
         press(&mut app, 'j');
         assert!(app.selected_entry().is_some());
+    }
+
+    #[test]
+    fn g_and_shift_g_land_on_edge_entries() {
+        let mut app = app_with("1x Sol Ring [Ramp]\n1x Forest [Lands]\n1x Solemn Simulacrum [Ramp]\n");
+        press(&mut app, 'G');
+        let last = app.selected_entry().expect("G left the cursor on a header");
+        let board_len = app.deck.main.len();
+        assert_eq!(
+            app.rows.len() - 1,
+            app.cursor,
+            "G must land on the very last row, not one above it"
+        );
+        assert!(last < board_len);
+
+        press(&mut app, 'g');
+        assert!(app.selected_entry().is_some(), "g left the cursor on a header");
+        assert_eq!(app.cursor, 1, "g should land on the first card under the first header");
     }
 
     #[test]

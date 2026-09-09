@@ -406,6 +406,15 @@ impl App {
         }
     }
 
+    /// Forces the next tick to rebuild the render protocol, which re-transmits
+    /// the image. Needed whenever the terminal may have lost it: kitty drops
+    /// images it never received, and tmux with `allow-passthrough on` silently
+    /// discards the transmission if the pane was not visible at the time.
+    pub fn invalidate_image(&mut self) {
+        self.protocol = None;
+        self.protocol_id = None;
+    }
+
     /// Scryfall id of the image for the selected card, honouring a pinned
     /// printing so the preview matches the version being priced.
     pub fn selected_image_id(&self) -> Option<String> {

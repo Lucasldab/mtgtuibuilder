@@ -74,7 +74,23 @@ thread and cached under `~/.cache/mtgtuibuilder/images/`, so scrolling never
 blocks on the network and a card is only ever downloaded once.
 
 Set `MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override protocol
-detection.
+detection, and `--doctor` to report what the preview will actually do in the
+current terminal.
+
+### Inside tmux
+
+Two tmux details matter, both handled automatically:
+
+- Font size. The window-size ioctl reports no pixel dimensions under tmux, so
+  the cell size is read from tmux's own `client_cell_width/height`. This is not
+  cosmetic: kitty's unicode placeholders size the image to a cell grid derived
+  from it, and a wrong value puts the image outside the cells meant to show it.
+- Re-transmission. With `allow-passthrough on` (the common setting) tmux
+  discards graphics from a pane that is not currently visible, and the image is
+  otherwise transmitted only once. The app requests focus reporting and
+  re-transmits when the pane comes back into view, so launching it in a
+  background window still works. Toggling `i` off and on forces the same thing
+  by hand.
 
 ## Deck format
 

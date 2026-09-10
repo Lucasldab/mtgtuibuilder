@@ -424,9 +424,15 @@ pub fn draw(area: Rect, buf: &mut Buffer, place: Placement) {
             };
             let mut symbol = String::with_capacity(16);
             symbol.push(PLACEHOLDER);
-            symbol.push(diacritic(row));
-            symbol.push(diacritic(col));
-            symbol.push(diacritic(u16::from(id_extra)));
+            // A bare placeholder inherits the row from the cell to its left
+            // and increments the column, provided the two share a foreground
+            // colour -- which they do, since the id is set on every cell. So
+            // only the first cell of a row states a position.
+            if col == 0 {
+                symbol.push(diacritic(row));
+                symbol.push(diacritic(col));
+                symbol.push(diacritic(u16::from(id_extra)));
+            }
             cell.set_symbol(&symbol);
             cell.set_style(style);
         }
@@ -480,7 +486,8 @@ mod tests {
 
     #[test]
     fn every_cell_gets_its_own_placeholder() {
-        // The whole point: one glyph per cell, not a row crammed into one.
+        // The whole point: one glyph per cell, not a row crammed into one,
+        // which is what a multiplexer cannot carry.
         let area = Rect::new(0, 0, 10, 4);
         let mut buf = Buffer::empty(area);
         let place = Placement { id: 0x01020304, cols: 6, rows: 3 };
@@ -488,16 +495,38 @@ mod tests {
 
         for row in 0..3u16 {
             for col in 0..6u16 {
-                let sym = buf[(col, row)].symbol();
-                let chars: Vec<char> = sym.chars().collect();
-                assert_eq!(chars[0], PLACEHOLDER, "cell {col},{row} is not a placeholder");
-                assert_eq!(chars[1], diacritic(row), "wrong row diacritic at {col},{row}");
-                assert_eq!(chars[2], diacritic(col), "wrong column diacritic at {col},{row}");
-                assert_eq!(chars.len(), 4, "expected exactly three diacritics");
+                let n = buf[(col, row)]
+                    .symbol()
+                    .chars()
+                    .filter(|c| *c == PLACEHOLDER)
+                    .count();
+                assert_eq!(n, 1, "cell {col},{row} holds {n} placeholders");
             }
         }
         // Cells outside the placement are untouched.
         assert_ne!(buf[(7, 0)].symbol(), buf[(0, 0)].symbol());
+    }
+
+    #[test]
+    fn only_the_first_cell_of_a_row_states_a_position() {
+        // The rest inherit row and column from the left, which the shared
+        // foreground colour permits, and cost one character each.
+        let area = Rect::new(0, 0, 10, 4);
+        let mut buf = Buffer::empty(area);
+        draw(area, &mut buf, Placement { id: 0x01020304, cols: 6, rows: 3 });
+
+        for row in 0..3u16 {
+            let first: Vec<char> = buf[(0, row)].symbol().chars().collect();
+            assert_eq!(first.len(), 4, "row {row} must state its position");
+            assert_eq!(first[1], diacritic(row));
+            for col in 1..6u16 {
+                assert_eq!(
+                    buf[(col, row)].symbol().chars().count(),
+                    1,
+                    "cell {col},{row} repeats a position it could inherit"
+                );
+            }
+        }
     }
 
     #[test]

@@ -2,12 +2,12 @@
 
 ## ratatui-image
 
-`src/kitty.rs` contains the `DIACRITICS` table — kitty's row/column diacritics,
-as published in the graphics protocol's `rowcolumn-diacritics.txt` — copied from
-[ratatui-image](https://github.com/ratatui/ratatui-image). Nothing else in this
-project is derived from it; the surrounding placeholder emission is original,
-and was contributed back upstream as
-[ratatui-image#201](https://github.com/ratatui/ratatui-image/pull/201).
+Card previews are drawn by
+[ratatui-image](https://github.com/ratatui/ratatui-image), whose code is linked
+into this binary. This project carried its own kitty placeholder emission for a
+while; that work was contributed upstream as
+[ratatui-image#201](https://github.com/ratatui/ratatui-image/pull/201) and the
+local copy has since been removed, so nothing here is derived from it any more.
 
 ratatui-image is distributed under the MIT licence:
 

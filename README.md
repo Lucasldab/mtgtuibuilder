@@ -78,16 +78,15 @@ Set `MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override protocol
 detection, and `--doctor` to report what the preview will actually do in the
 current terminal.
 
-Kitty's protocol is emitted by `src/kitty.rs` rather than through
-ratatui-image. That crate draws a whole row of unicode placeholders into a
-single ratatui cell and marks the rest of the row skipped -- a workaround its
-own source acknowledges -- and tmux cannot represent it, since its grid holds
-one glyph plus a few combining marks per cell. The placeholder grid arrives
-malformed, kitty places nothing, and `q=2` in the transmission silences any
-error. `kitten icat` works in the same tmux by writing each cell separately,
-so this module does the same: one placeholder per cell, each carrying its own
-row, column and image-id diacritics, with the image sent as PNG straight to
-stdout, chunked, and wrapped per chunk in a tmux passthrough.
+Kitty's protocol goes through ratatui-image like every other one. It used to
+need a local replacement: ratatui-image drew a whole row of unicode
+placeholders into a single ratatui cell and marked the rest of the row
+skipped, which tmux cannot represent -- its grid holds one glyph plus a few
+combining marks per cell -- so the placeholder grid arrived malformed, kitty
+placed nothing, and `q=2` in the transmission silenced any error. That is
+fixed upstream in
+[ratatui-image#201](https://github.com/ratatui/ratatui-image/pull/201), which
+emits one placeholder per cell, so the local module is gone.
 
 Half-blocks remain the fallback for terminals without a graphics protocol.
 
@@ -102,8 +101,7 @@ Two tmux details matter, both handled automatically:
 - Re-transmission. With `allow-passthrough on` (the common setting) tmux
   discards graphics from a pane that is not currently visible, and the image is
   otherwise transmitted only once. The app requests focus reporting and
-  re-transmits when the pane comes back into view. This only matters when
-  kitty is forced, since the tmux default is halfblocks.
+  re-transmits when the pane comes back into view.
 
 ## Suggestions
 

@@ -6,8 +6,6 @@ use crate::deck::{Board, COMMANDER, Deck, Entry};
 use crate::decklist;
 use crate::edhrec::{self, Suggestion};
 use crate::images::{self, Status};
-use crate::kitty::{self, Placement};
-use ratatui::layout::Rect;
 use crate::stats::{self, Stats};
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
@@ -63,16 +61,6 @@ pub struct App {
     /// map pixels onto cells -- previews are simply unavailable then.
     pub picker: Option<Picker>,
     pub protocol: Option<StatefulProtocol>,
-    /// Kitty is handled directly rather than through ratatui-image, whose
-    /// placeholder emission does not survive tmux. See the kitty module.
-    pub use_kitty: bool,
-    pub font: (u16, u16),
-    pub is_tmux: bool,
-    /// Preview area, recorded by the renderer so the next tick can size the
-    /// transmission to it.
-    pub kitty_area: Option<Rect>,
-    pub kitty_place: Option<Placement>,
-    kitty_for: Option<String>,
     /// Which card id `protocol` was built for, so moving the cursor swaps art.
     protocol_id: Option<String>,
     /// Set after a quit attempt with unsaved changes, cleared by any other key.
@@ -106,12 +94,6 @@ impl App {
             loader: images::Loader::new(),
             picker: None,
             protocol: None,
-            use_kitty: false,
-            font: (8, 16),
-            is_tmux: false,
-            kitty_area: None,
-            kitty_place: None,
-            kitty_for: None,
             protocol_id: None,
             confirm_quit: false,
         };
@@ -528,10 +510,6 @@ impl App {
     pub fn invalidate_image(&mut self) {
         self.protocol = None;
         self.protocol_id = None;
-        // Forget the placement too, so the image is sent again -- tmux drops
-        // transmissions from a pane that was not visible.
-        self.kitty_place = None;
-        self.kitty_for = None;
     }
 
     /// Scryfall id of the image for the selected card, honouring a pinned
@@ -571,11 +549,6 @@ impl App {
         self.loader.request(&id);
         self.loader.poll();
 
-        if self.use_kitty {
-            self.tick_kitty(&id);
-            return;
-        }
-
         // The protocol encodes during render and stores any failure rather
         // than returning it; unchecked, a failed encode is indistinguishable
         // from a blank pane.
@@ -599,41 +572,6 @@ impl App {
         }
     }
 
-    /// Transmits the selected card at the size the preview pane needs, and
-    /// only when that changes -- moving the cursor, resizing, or coming back
-    /// into view after tmux discarded the last transmission.
-    fn tick_kitty(&mut self, id: &str) {
-        let Some(area) = self.kitty_area.filter(|a| a.width > 0 && a.height > 0) else {
-            return;
-        };
-        let Some(img) = self.loader.get(id) else {
-            self.kitty_place = None;
-            self.kitty_for = None;
-            return;
-        };
-
-        let (px_w, px_h, cols, rows) = kitty::fit(img, area, self.font);
-        let want = Placement { id: kitty_id(id), cols, rows };
-        if self.kitty_place == Some(want) && self.kitty_for.as_deref() == Some(id) {
-            return;
-        }
-
-        if let Some(old) = self.kitty_place.filter(|o| o.id != want.id) {
-            kitty::delete(old.id, self.is_tmux);
-        }
-        let img = img.clone();
-        match kitty::transmit(&img, want, (px_w, px_h), self.is_tmux) {
-            Ok(()) => {
-                self.kitty_place = Some(want);
-                self.kitty_for = Some(id.to_string());
-            }
-            Err(e) => {
-                self.status = format!("image transmit failed: {e}");
-                self.kitty_place = None;
-            }
-        }
-    }
-
     fn save(&mut self) {
         let Some(path) = self.deck.path.clone() else {
             self.mode = Mode::SaveAs;
@@ -649,17 +587,6 @@ impl App {
             Err(e) => self.status = format!("Save failed: {e}"),
         }
     }
-}
-
-/// Stable per-card kitty image id. Kept under 2^24 so the high byte is zero
-/// and the id rides entirely in the placeholder's foreground colour.
-fn kitty_id(card_id: &str) -> u32 {
-    let mut h: u32 = 2166136261;
-    for b in card_id.as_bytes() {
-        h ^= u32::from(*b);
-        h = h.wrapping_mul(16777619);
-    }
-    (h & 0x00FF_FFFF).max(1)
 }
 
 /// Minimal `~` expansion so the save-as prompt accepts a home-relative path.

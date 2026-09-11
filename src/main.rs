@@ -7,7 +7,6 @@ mod deck;
 mod decklist;
 mod edhrec;
 mod images;
-mod kitty;
 mod scryfall;
 mod stats;
 mod ui;
@@ -90,9 +89,6 @@ fn main() -> Result<()> {
 
     let mut app = App::new(db, deck);
     let picker = build_picker();
-    app.use_kitty = matches!(picker.protocol_type(), ProtocolType::Kitty);
-    app.font = picker.font_size();
-    app.is_tmux = std::env::var_os("TMUX").is_some();
     app.picker = Some(picker);
     if let Some(stamp) = scryfall::cache_stamp() {
         app.status = format!("prices from {}", &stamp[..stamp.len().min(10)]);
@@ -134,17 +130,14 @@ fn build_picker() -> Picker {
 
 /// Picks the graphics protocol.
 ///
-/// Kitty's protocol does not survive tmux in practice. The image is sent as a
-/// passthrough sequence, which tmux drops entirely when the pane is not
-/// visible and which arrives at kitty without ever producing a placement --
-/// verified by screenshotting a real session: correct geometry on the wire
-/// (s=432,v=621 against a 12x27 cell, exactly the 36x23 pane), placeholders
-/// recognised by kitty, and an empty pane. `q=2` in the transmission
-/// suppresses every error kitty might report, so there is nothing to act on.
+/// Kitty used to be downgraded to halfblocks under tmux: ratatui-image packed
+/// a row of unicode placeholders into one cell, which tmux cannot carry, so
+/// kitty produced no placement and the pane came up empty -- silently, since
+/// `q=2` in the transmission suppresses every error kitty might report.
+/// ratatui-image#201 emits one placeholder per cell instead, so kitty now
+/// works under tmux and is kept there.
 ///
-/// Halfblocks go through tmux as ordinary coloured cells and cannot be
-/// dropped, so they are the default there. Kitty remains available explicitly
-/// for anyone whose setup does work.
+/// Halfblocks remain the fallback for terminals with no graphics protocol.
 fn choose_protocol(
     detected: ProtocolType,
     forced: Option<&str>,
@@ -160,8 +153,8 @@ fn choose_protocol(
             _ => {}
         }
     }
-    // Kitty is emitted by this crate's own module, which works under tmux, so
-    // being inside tmux no longer forces a downgrade.
+    // ratatui-image emits one kitty placeholder per cell (upstream PR #201),
+    // which survives tmux, so being inside tmux no longer forces a downgrade.
     let _ = in_tmux;
     if matches!(detected, ProtocolType::Halfblocks) && kitty_env {
         return ProtocolType::Kitty;
@@ -180,7 +173,7 @@ fn font_size() -> (FontSize, &'static str) {
     if let Some(size) = crossterm::terminal::window_size()
         .ok()
         .filter(|w| w.width > 0 && w.height > 0 && w.columns > 0 && w.rows > 0)
-        .map(|w| (w.width / w.columns, w.height / w.rows))
+        .map(|w| FontSize::new(w.width / w.columns, w.height / w.rows))
     {
         return (size, "ioctl");
     }
@@ -193,7 +186,7 @@ fn font_size() -> (FontSize, &'static str) {
         }
     }
 
-    ((8, 16), "fallback")
+    (FontSize::new(8, 16), "fallback")
 }
 
 fn tmux_cell_size() -> Option<FontSize> {
@@ -209,7 +202,7 @@ fn parse_cell_size(s: &str) -> Option<FontSize> {
     let w: u16 = w.trim().parse().ok()?;
     let h: u16 = h.trim().parse().ok()?;
     // tmux reports zeroes when it has no answer from the outer terminal.
-    (w > 0 && h > 0).then_some((w, h))
+    (w > 0 && h > 0).then(|| FontSize::new(w, h))
 }
 
 fn kitty_from_env() -> bool {
@@ -245,7 +238,8 @@ fn doctor() {
     let (_, source) = font_size();
     let picker = build_picker();
     println!("\npreview");
-    println!("  font size             {:?} (from {source})", picker.font_size());
+    let font = picker.font_size();
+    println!("  font size             {}x{} (from {source})", font.width, font.height);
     println!("  protocol              {:?}", picker.protocol_type());
     if matches!(picker.protocol_type(), ProtocolType::Halfblocks)
         && std::env::var_os("TMUX").is_some()
@@ -313,8 +307,8 @@ mod tests {
 
     #[test]
     fn kitty_is_kept_under_tmux() {
-        // The crate's own kitty module emits per-cell placeholders, which do
-        // survive tmux -- so tmux no longer forces a downgrade.
+        // ratatui-image emits per-cell placeholders, which do survive tmux --
+        // so tmux no longer forces a downgrade.
         assert_eq!(
             choose_protocol(ProtocolType::Halfblocks, None, true, true),
             ProtocolType::Kitty
@@ -357,23 +351,28 @@ mod tests {
         );
     }
 
+    /// `FontSize` does not implement `PartialEq`, so compare the fields.
+    fn cell_size(s: &str) -> Option<(u16, u16)> {
+        parse_cell_size(s).map(|f| (f.width, f.height))
+    }
+
     #[test]
     fn parses_tmux_cell_size() {
-        assert_eq!(parse_cell_size("12x27\n"), Some((12, 27)));
-        assert_eq!(parse_cell_size(" 8x16 "), Some((8, 16)));
+        assert_eq!(cell_size("12x27\n"), Some((12, 27)));
+        assert_eq!(cell_size(" 8x16 "), Some((8, 16)));
     }
 
     #[test]
     fn rejects_tmux_zeroes() {
         // tmux prints zeroes when the outer terminal never answered.
-        assert_eq!(parse_cell_size("0x0"), None);
-        assert_eq!(parse_cell_size("12x0"), None);
+        assert_eq!(cell_size("0x0"), None);
+        assert_eq!(cell_size("12x0"), None);
     }
 
     #[test]
     fn rejects_garbage() {
-        assert_eq!(parse_cell_size(""), None);
-        assert_eq!(parse_cell_size("12"), None);
-        assert_eq!(parse_cell_size("axb"), None);
+        assert_eq!(cell_size(""), None);
+        assert_eq!(cell_size("12"), None);
+        assert_eq!(cell_size("axb"), None);
     }
 }

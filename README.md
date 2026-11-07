@@ -5,18 +5,7 @@
 Terminal Magic: the Gathering deck builder — Archidekt-style categories,
 Commander legality, and Cardmarket prices. Rust + Ratatui.
 
-```
-┌ Deck — 34 cards ──────────────────────────┐┌ Stats ──────────────────┐
-│Commander (1)                              ││Atraxa, Praetors' Voice  │
-│  1x Atraxa, Praetors' Voice  €15.41       ││                     BGUW│
-│Draw (3)                                   ││Price  €101.26           │
-│  1x Rhystic Study  €34.69                 ││Lands  19  Avg CMC  2.87 │
-│  1x Sylvan Library  €23.48                ││Pips   W4 U3 B5 G7       │
-│Ramp (5)                                   ││Curve                    │
-│  1x Sol Ring  €0.76                       ││ 1 █████ 2               │
-│  1x Arcane Signet  €0.37                  ││ 3 ██████████████████ 7  │
-└───────────────────────────────────────────┘└─────────────────────────┘
-```
+![The example Atraxa deck: cards grouped by category with prices, and a stats pane with the deck price, mana curve and Commander checks](docs/screenshot.png)
 
 ## Why the prices work without a Cardmarket account
 

@@ -158,7 +158,7 @@ fn rebuild(progress: &mut dyn FnMut(&str)) -> Result<()> {
             Err(_) => continue,
         };
         seen += 1;
-        if seen % 20_000 == 0 {
+        if seen.is_multiple_of(20_000) {
             progress(&format!("  parsed {seen} printings..."));
         }
 

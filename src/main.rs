@@ -183,10 +183,10 @@ fn font_size() -> (FontSize, &'static str) {
 
     // Terminals under tmux report no pixel size through the ioctl, but tmux
     // has queried the outer terminal itself and will hand over the answer.
-    if std::env::var_os("TMUX").is_some() {
-        if let Some(size) = tmux_cell_size() {
-            return (size, "tmux");
-        }
+    if std::env::var_os("TMUX").is_some()
+        && let Some(size) = tmux_cell_size()
+    {
+        return (size, "tmux");
     }
 
     (FontSize::new(8, 16), "fallback")

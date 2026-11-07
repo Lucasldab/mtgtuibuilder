@@ -166,10 +166,10 @@ pub fn load(path: &Path) -> Result<Deck> {
 }
 
 pub fn save(deck: &Deck, path: &Path) -> Result<()> {
-    if let Some(dir) = path.parent() {
-        if !dir.as_os_str().is_empty() {
-            fs::create_dir_all(dir)?;
-        }
+    if let Some(dir) = path.parent()
+        && !dir.as_os_str().is_empty()
+    {
+        fs::create_dir_all(dir)?;
     }
     fs::write(path, render(deck))?;
     Ok(())

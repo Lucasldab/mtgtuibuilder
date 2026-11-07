@@ -403,11 +403,9 @@ impl App {
                             self.refresh();
                         }
                     }
-                    Mode::SaveAs => {
-                        if !value.is_empty() {
-                            self.deck.path = Some(PathBuf::from(shell_expand(&value)));
-                            self.save();
-                        }
+                    Mode::SaveAs if !value.is_empty() => {
+                        self.deck.path = Some(PathBuf::from(shell_expand(&value)));
+                        self.save();
                     }
                     _ => {}
                 }
@@ -595,10 +593,10 @@ impl App {
 
 /// Minimal `~` expansion so the save-as prompt accepts a home-relative path.
 fn shell_expand(s: &str) -> String {
-    if let Some(rest) = s.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(rest).display().to_string();
-        }
+    if let Some(rest) = s.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest).display().to_string();
     }
     s.to_string()
 }

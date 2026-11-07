@@ -46,9 +46,7 @@ impl Card {
                 let s = s.to_lowercase();
                 self.printings
                     .iter()
-                    .find(|p| {
-                        p.set == s && number.map(|n| p.number == n).unwrap_or(true)
-                    })
+                    .find(|p| p.set == s && number.map(|n| p.number == n).unwrap_or(true))
                     .or_else(|| self.printings.iter().find(|p| p.set == s))
                     .or_else(|| self.cheapest())
             }

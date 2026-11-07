@@ -138,7 +138,11 @@ pub fn render(deck: &Deck) -> String {
 
 fn render_board(out: &mut String, deck: &Deck, board: Board) {
     for cat in deck.categories(board) {
-        for e in deck.board(board).iter().filter(|e| e.category_or_default() == cat) {
+        for e in deck
+            .board(board)
+            .iter()
+            .filter(|e| e.category_or_default() == cat)
+        {
             out.push_str(&format!("{}x {}", e.qty, e.name));
             if let Some(set) = &e.set {
                 out.push_str(&format!(" ({set})"));

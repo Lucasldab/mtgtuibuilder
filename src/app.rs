@@ -7,9 +7,9 @@ use crate::decklist;
 use crate::edhrec::{self, Suggestion};
 use crate::images::{self, Status};
 use crate::stats::{self, Stats};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui_image::picker::Picker;
 use ratatui_image::protocol::StatefulProtocol;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -552,7 +552,11 @@ impl App {
         // The protocol encodes during render and stores any failure rather
         // than returning it; unchecked, a failed encode is indistinguishable
         // from a blank pane.
-        if let Some(Err(e)) = self.protocol.as_mut().and_then(|p| p.last_encoding_result()) {
+        if let Some(Err(e)) = self
+            .protocol
+            .as_mut()
+            .and_then(|p| p.last_encoding_result())
+        {
             self.status = format!("image encode failed: {e}");
         }
 
@@ -627,8 +631,16 @@ mod tests {
                 .collect(),
         };
         CardDb::new(vec![
-            mk("Sol Ring", "Artifact", vec![("ltc", "292", 1.50), ("c21", "263", 2.75)]),
-            mk("Solemn Simulacrum", "Artifact Creature", vec![("m21", "234", 0.60)]),
+            mk(
+                "Sol Ring",
+                "Artifact",
+                vec![("ltc", "292", 1.50), ("c21", "263", 2.75)],
+            ),
+            mk(
+                "Solemn Simulacrum",
+                "Artifact Creature",
+                vec![("m21", "234", 0.60)],
+            ),
             mk("Forest", "Basic Land — Forest", vec![("blb", "280", 0.10)]),
         ])
     }
@@ -652,7 +664,8 @@ mod tests {
 
     #[test]
     fn g_and_shift_g_land_on_edge_entries() {
-        let mut app = app_with("1x Sol Ring [Ramp]\n1x Forest [Lands]\n1x Solemn Simulacrum [Ramp]\n");
+        let mut app =
+            app_with("1x Sol Ring [Ramp]\n1x Forest [Lands]\n1x Solemn Simulacrum [Ramp]\n");
         press(&mut app, 'G');
         let last = app.selected_entry().expect("G left the cursor on a header");
         let board_len = app.deck.main.len();
@@ -664,8 +677,14 @@ mod tests {
         assert!(last < board_len);
 
         press(&mut app, 'g');
-        assert!(app.selected_entry().is_some(), "g left the cursor on a header");
-        assert_eq!(app.cursor, 1, "g should land on the first card under the first header");
+        assert!(
+            app.selected_entry().is_some(),
+            "g left the cursor on a header"
+        );
+        assert_eq!(
+            app.cursor, 1,
+            "g should land on the first card under the first header"
+        );
     }
 
     fn sugg(name: &str) -> Suggestion {
@@ -698,7 +717,11 @@ mod tests {
         // The whole point: this answers "what else", not "what is popular".
         let mut app = app_with("1x Sol Ring [Commander]\n1x Forest [Lands]\n");
         app.suggestions = vec![sugg("Sol Ring"), sugg("Forest"), sugg("Solemn Simulacrum")];
-        let names: Vec<&str> = app.visible_suggestions().iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<&str> = app
+            .visible_suggestions()
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
         assert_eq!(names, vec!["Solemn Simulacrum"]);
     }
 
@@ -718,7 +741,11 @@ mod tests {
         app.suggestions = vec![sugg("Forest"), sugg("Solemn Simulacrum")];
         app.on_key(KeyEvent::from(KeyCode::Enter));
         assert!(app.deck.main.iter().any(|e| e.name == "Forest"));
-        let names: Vec<&str> = app.visible_suggestions().iter().map(|s| s.name.as_str()).collect();
+        let names: Vec<&str> = app
+            .visible_suggestions()
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
         assert_eq!(names, vec!["Solemn Simulacrum"]);
     }
 
@@ -792,14 +819,20 @@ mod tests {
         app.protocol_id = Some("stale".into());
         press(&mut app, 'i');
         assert!(app.protocol.is_none());
-        assert!(app.protocol_id.is_none(), "stale id would block the next load");
+        assert!(
+            app.protocol_id.is_none(),
+            "stale id would block the next load"
+        );
     }
 
     #[test]
     fn tick_is_a_no_op_while_the_preview_is_off() {
         let mut app = app_with("1x Sol Ring [Ramp]\n");
         app.tick_images();
-        assert!(app.loader.status("ltc-292").is_none(), "fetched with preview off");
+        assert!(
+            app.loader.status("ltc-292").is_none(),
+            "fetched with preview off"
+        );
     }
 
     #[test]
@@ -832,7 +865,10 @@ mod tests {
         assert_eq!(app.deck.main[0].qty, 2);
         press(&mut app, '-');
         press(&mut app, '-');
-        assert!(app.deck.main.is_empty(), "dropping to zero should remove the entry");
+        assert!(
+            app.deck.main.is_empty(),
+            "dropping to zero should remove the entry"
+        );
     }
 
     #[test]
@@ -860,7 +896,10 @@ mod tests {
         press(&mut app, 'p');
         press(&mut app, '0');
         assert_eq!(app.deck.main[0].set, None);
-        assert_eq!(app.price.0, 1.50, "should fall back to the cheapest printing");
+        assert_eq!(
+            app.price.0, 1.50,
+            "should fall back to the cheapest printing"
+        );
     }
 
     #[test]
@@ -915,7 +954,11 @@ mod tests {
         app.deck.path = Some(path.clone());
         app.deck.dirty = true;
         press(&mut app, 's');
-        assert!(!app.deck.dirty, "save should clear the dirty flag: {}", app.status);
+        assert!(
+            !app.deck.dirty,
+            "save should clear the dirty flag: {}",
+            app.status
+        );
 
         let reloaded = decklist::load(&path).unwrap();
         assert_eq!(reloaded.main, app.deck.main);

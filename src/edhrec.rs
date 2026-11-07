@@ -193,7 +193,11 @@ impl Loader {
                 }
             }
         });
-        Self { requests, replies, pending: None }
+        Self {
+            requests,
+            replies,
+            pending: None,
+        }
     }
 
     pub fn request(&mut self, slug: &str) {
@@ -228,7 +232,10 @@ mod tests {
     #[test]
     fn slugs_match_edhrec_urls() {
         assert_eq!(slug("Atraxa, Praetors' Voice"), "atraxa-praetors-voice");
-        assert_eq!(slug("Kenrith, the Returned King"), "kenrith-the-returned-king");
+        assert_eq!(
+            slug("Kenrith, the Returned King"),
+            "kenrith-the-returned-king"
+        );
         assert_eq!(slug("Sol Ring"), "sol-ring");
     }
 
@@ -246,7 +253,10 @@ mod tests {
 
     #[test]
     fn slug_handles_a_typographic_apostrophe() {
-        assert_eq!(slug("Atraxa, Praetors\u{2019} Voice"), "atraxa-praetors-voice");
+        assert_eq!(
+            slug("Atraxa, Praetors\u{2019} Voice"),
+            "atraxa-praetors-voice"
+        );
     }
 
     fn page() -> &'static str {

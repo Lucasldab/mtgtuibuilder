@@ -167,7 +167,11 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                if identity.is_empty() { "  (colourless)".into() } else { format!("  {identity}") },
+                if identity.is_empty() {
+                    "  (colourless)".into()
+                } else {
+                    format!("  {identity}")
+                },
                 Style::default().fg(MUTED),
             ),
         ]));
@@ -182,7 +186,11 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            if unpriced > 0 { format!("  ({unpriced} unpriced)") } else { String::new() },
+            if unpriced > 0 {
+                format!("  ({unpriced} unpriced)")
+            } else {
+                String::new()
+            },
             Style::default().fg(MUTED),
         ),
     ]));
@@ -212,7 +220,11 @@ fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
     )));
     let peak = s.curve.iter().copied().max().unwrap_or(1).max(1);
     for (i, n) in s.curve.iter().enumerate() {
-        let label = if i == CURVE_BUCKETS - 1 { format!("{i}+") } else { i.to_string() };
+        let label = if i == CURVE_BUCKETS - 1 {
+            format!("{i}+")
+        } else {
+            i.to_string()
+        };
         // Bar width is proportional to the tallest bucket, capped so the
         // panel never wraps.
         let width = (*n as usize * 18 / peak as usize).min(18);
@@ -339,7 +351,10 @@ fn draw_legality(f: &mut Frame, app: &App, area: Rect) {
     let title = if errors == 0 {
         " Commander ".to_string()
     } else {
-        format!(" Commander — {errors} problem{} ", if errors == 1 { "" } else { "s" })
+        format!(
+            " Commander — {errors} problem{} ",
+            if errors == 1 { "" } else { "s" }
+        )
     };
 
     let widget = Paragraph::new(lines).wrap(Wrap { trim: true }).block(
@@ -433,16 +448,23 @@ fn draw_search(f: &mut Frame, app: &App) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(ACCENT_DIM))
-                .title(format!(" {} matches — Enter adds, Esc cancels ", app.results.len())),
+                .title(format!(
+                    " {} matches — Enter adds, Esc cancels ",
+                    app.results.len()
+                )),
         )
         .highlight_style(Style::default().bg(ACCENT_DIM).add_modifier(Modifier::BOLD));
     f.render_stateful_widget(list, chunks[1], &mut state);
 }
 
 fn draw_printing(f: &mut Frame, app: &App) {
-    let Some(idx) = app.selected_entry() else { return };
+    let Some(idx) = app.selected_entry() else {
+        return;
+    };
     let entry = &app.deck.board(app.board)[idx];
-    let Some(card) = app.db.get(&entry.name) else { return };
+    let Some(card) = app.db.get(&entry.name) else {
+        return;
+    };
 
     let area = centered(60, 60, f.area());
     f.render_widget(Clear, area);
@@ -452,7 +474,10 @@ fn draw_printing(f: &mut Frame, app: &App) {
         .iter()
         .map(|p| {
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:<6}", p.set.to_uppercase()), Style::default().fg(ACCENT_DIM)),
+                Span::styled(
+                    format!("{:<6}", p.set.to_uppercase()),
+                    Style::default().fg(ACCENT_DIM),
+                ),
                 Span::raw(format!("{:<32}", truncate(&p.set_name, 31))),
                 Span::styled(format!("{:>6}  ", p.number), Style::default().fg(MUTED)),
                 Span::styled(
@@ -473,7 +498,10 @@ fn draw_printing(f: &mut Frame, app: &App) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(ACCENT))
-                .title(format!(" {} — Enter picks, 0 resets to cheapest ", truncate(&card.name, 40))),
+                .title(format!(
+                    " {} — Enter picks, 0 resets to cheapest ",
+                    truncate(&card.name, 40)
+                )),
         )
         .highlight_style(Style::default().bg(ACCENT_DIM).add_modifier(Modifier::BOLD));
     f.render_stateful_widget(list, area, &mut state);
@@ -536,7 +564,11 @@ fn draw_suggestions(f: &mut Frame, app: &mut App) {
         .collect();
 
     let title = if app.suggest_status.is_empty() {
-        format!(" Suggestions for {} — {} cards ", truncate(commander, 28), visible.len())
+        format!(
+            " Suggestions for {} — {} cards ",
+            truncate(commander, 28),
+            visible.len()
+        )
     } else {
         format!(" Suggestions — {} ", app.suggest_status)
     };
@@ -590,7 +622,10 @@ fn draw_suggestion_art(f: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(ACCENT_DIM))
-        .title(Span::styled(format!(" {name} "), Style::default().fg(ACCENT)));
+        .title(Span::styled(
+            format!(" {name} "),
+            Style::default().fg(ACCENT),
+        ));
     let inner = block.inner(area);
     f.render_widget(block, area);
     draw_image(f, app, inner);
@@ -688,7 +723,14 @@ mod tests {
             }],
         };
         crate::card::CardDb::new(vec![
-            mk("Atraxa, Grand Unifier", "{4}{W}{B}", 7.0, "Legendary Creature — Angel", &["W","U","B","G"], 25.0),
+            mk(
+                "Atraxa, Grand Unifier",
+                "{4}{W}{B}",
+                7.0,
+                "Legendary Creature — Angel",
+                &["W", "U", "B", "G"],
+                25.0,
+            ),
             mk("Sol Ring", "{1}", 1.0, "Artifact", &[], 1.50),
             mk("Forest", "", 0.0, "Basic Land — Forest", &["G"], 0.10),
         ])
@@ -732,7 +774,10 @@ mod tests {
         let deck = decklist::parse("2x Sol Ring [Ramp]\n");
         let mut app = App::new(db(), deck);
         let out = render(&mut app, 120, 40);
-        assert!(out.contains("singleton"), "singleton breach not shown:\n{out}");
+        assert!(
+            out.contains("singleton"),
+            "singleton breach not shown:\n{out}"
+        );
     }
 
     #[test]
@@ -760,7 +805,10 @@ mod tests {
         app.preview = true;
         let out = render(&mut app, 140, 40);
         assert!(out.contains("Image"), "preview pane missing:\n{out}");
-        assert!(out.contains("Curve"), "stats should survive on a wide terminal");
+        assert!(
+            out.contains("Curve"),
+            "stats should survive on a wide terminal"
+        );
     }
 
     #[test]
@@ -769,7 +817,10 @@ mod tests {
         app.preview = true;
         let out = render(&mut app, 100, 40);
         assert!(out.contains("Image"), "preview pane missing:\n{out}");
-        assert!(!out.contains("Curve"), "stats should yield to the preview when narrow");
+        assert!(
+            !out.contains("Curve"),
+            "stats should yield to the preview when narrow"
+        );
         assert!(out.contains("Commander"), "legality must stay visible");
     }
 
@@ -779,7 +830,10 @@ mod tests {
         app.preview = true;
         app.picker = None;
         let out = render(&mut app, 140, 40);
-        assert!(out.contains("no graphics protocol"), "missing explanation:\n{out}");
+        assert!(
+            out.contains("no graphics protocol"),
+            "missing explanation:\n{out}"
+        );
     }
 
     #[test]
@@ -793,7 +847,10 @@ mod tests {
         app.picker = Some(picker);
         let out = render(&mut app, 140, 40);
         assert!(out.contains("Image"));
-        assert!(!out.contains("loading"), "placeholder shown despite a ready image");
+        assert!(
+            !out.contains("loading"),
+            "placeholder shown despite a ready image"
+        );
         assert!(!out.contains("no graphics protocol"));
     }
 

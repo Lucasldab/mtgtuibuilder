@@ -125,7 +125,9 @@ pub fn image_url(id: &str) -> Option<String> {
     let mut chars = id.chars();
     let a = chars.next()?;
     let b = chars.next()?;
-    Some(format!("https://cards.scryfall.io/normal/front/{a}/{b}/{id}.jpg"))
+    Some(format!(
+        "https://cards.scryfall.io/normal/front/{a}/{b}/{id}.jpg"
+    ))
 }
 
 fn fetch(id: &str) -> Option<DynamicImage> {
@@ -182,10 +184,16 @@ mod tests {
     fn requests_are_deduplicated() {
         let mut l = Loader::new();
         l.request("aaaaaaaa-0000-0000-0000-000000000000");
-        assert_eq!(l.status("aaaaaaaa-0000-0000-0000-000000000000"), Some(Status::Loading));
+        assert_eq!(
+            l.status("aaaaaaaa-0000-0000-0000-000000000000"),
+            Some(Status::Loading)
+        );
         // A second request must not reset a slot that is already in flight.
         l.request("aaaaaaaa-0000-0000-0000-000000000000");
-        assert_eq!(l.status("aaaaaaaa-0000-0000-0000-000000000000"), Some(Status::Loading));
+        assert_eq!(
+            l.status("aaaaaaaa-0000-0000-0000-000000000000"),
+            Some(Status::Loading)
+        );
     }
 
     #[test]

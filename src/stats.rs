@@ -23,10 +23,14 @@ pub fn compute(deck: &Deck, db: &CardDb) -> Stats {
     let mut cmc_total = 0.0f32;
 
     for e in &deck.main {
-        let Some(card) = db.get(&e.name) else { continue };
+        let Some(card) = db.get(&e.name) else {
+            continue;
+        };
         let qty = e.qty;
 
-        *type_counts.entry(card.primary_type().to_string()).or_default() += qty;
+        *type_counts
+            .entry(card.primary_type().to_string())
+            .or_default() += qty;
 
         if card.is_land() {
             s.lands += qty;
@@ -45,7 +49,11 @@ pub fn compute(deck: &Deck, db: &CardDb) -> Stats {
         }
     }
 
-    s.avg_cmc = if s.nonlands > 0 { cmc_total / s.nonlands as f32 } else { 0.0 };
+    s.avg_cmc = if s.nonlands > 0 {
+        cmc_total / s.nonlands as f32
+    } else {
+        0.0
+    };
 
     // Largest group first -- that ordering is what makes the panel scannable.
     let mut types: Vec<(String, u32)> = type_counts.into_iter().collect();

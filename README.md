@@ -1,5 +1,7 @@
 # mtgtuibuilder
 
+[![CI](https://github.com/Lucasldab/mtgtuibuilder/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucasldab/mtgtuibuilder/actions/workflows/ci.yml)
+
 Terminal Magic: the Gathering deck builder — Archidekt-style categories,
 Commander legality, and Cardmarket prices. Rust + Ratatui.
 

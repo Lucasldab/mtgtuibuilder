@@ -19,10 +19,16 @@ pub struct Issue {
 
 impl Issue {
     fn error(text: impl Into<String>) -> Self {
-        Self { severity: Severity::Error, text: text.into() }
+        Self {
+            severity: Severity::Error,
+            text: text.into(),
+        }
     }
     fn warn(text: impl Into<String>) -> Self {
-        Self { severity: Severity::Warn, text: text.into() }
+        Self {
+            severity: Severity::Warn,
+            text: text.into(),
+        }
     }
 }
 
@@ -61,8 +67,7 @@ pub fn validate(deck: &Deck, db: &CardDb) -> Vec<Issue> {
                             }
                         }
                     }
-                    None => issues
-                        .push(Issue::error(format!("Unknown commander: {}", e.name))),
+                    None => issues.push(Issue::error(format!("Unknown commander: {}", e.name))),
                 }
             }
             if commanders.len() == 2 {
@@ -76,7 +81,11 @@ pub fn validate(deck: &Deck, db: &CardDb) -> Vec<Issue> {
 
     let total = deck.total_cards();
     if total != 100 {
-        let sev = if total > 100 { Severity::Error } else { Severity::Warn };
+        let sev = if total > 100 {
+            Severity::Error
+        } else {
+            Severity::Warn
+        };
         issues.push(Issue {
             severity: sev,
             text: format!("{total}/100 cards ({:+})", total as i64 - 100),
@@ -90,7 +99,10 @@ pub fn validate(deck: &Deck, db: &CardDb) -> Vec<Issue> {
         };
 
         if !card.commander_legal {
-            issues.push(Issue::error(format!("{} is banned or not legal", card.name)));
+            issues.push(Issue::error(format!(
+                "{} is banned or not legal",
+                card.name
+            )));
         }
 
         if e.qty > 1 && !card.is_basic_land() && !card.unlimited() {
@@ -149,11 +161,21 @@ mod tests {
 
     fn db() -> CardDb {
         CardDb::new(vec![
-            card("Atraxa, Grand Unifier", "Legendary Creature — Phyrexian Angel", &["W", "U", "B", "G"], ""),
+            card(
+                "Atraxa, Grand Unifier",
+                "Legendary Creature — Phyrexian Angel",
+                &["W", "U", "B", "G"],
+                "",
+            ),
             card("Sol Ring", "Artifact", &[], ""),
             card("Lightning Bolt", "Instant", &["R"], ""),
             card("Forest", "Basic Land — Forest", &["G"], ""),
-            card("Relentless Rats", "Creature — Rat", &["B"], "A deck can have any number of cards named Relentless Rats."),
+            card(
+                "Relentless Rats",
+                "Creature — Rat",
+                &["B"],
+                "A deck can have any number of cards named Relentless Rats.",
+            ),
             card("Goblin Guide", "Creature — Goblin Scout", &["R"], ""),
         ])
     }
@@ -171,9 +193,7 @@ mod tests {
     #[test]
     fn flags_colour_identity_violation() {
         // Atraxa is WUBG, so a red card is outside her identity.
-        let deck = decklist::parse(
-            "1x Atraxa, Grand Unifier [Commander]\n1x Lightning Bolt\n",
-        );
+        let deck = decklist::parse("1x Atraxa, Grand Unifier [Commander]\n1x Lightning Bolt\n");
         assert!(has(&validate(&deck, &db()), "outside colour identity"));
     }
 

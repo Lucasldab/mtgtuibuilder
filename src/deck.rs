@@ -18,7 +18,13 @@ pub struct Entry {
 
 impl Entry {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { qty: 1, name: name.into(), set: None, number: None, category: None }
+        Self {
+            qty: 1,
+            name: name.into(),
+            set: None,
+            number: None,
+            category: None,
+        }
     }
 
     pub fn category_or_default(&self) -> &str {

@@ -15,10 +15,10 @@ use anyhow::Result;
 use app::App;
 use crossterm::event::{self, Event, KeyEventKind};
 use crossterm::event::{DisableFocusChange, EnableFocusChange};
+use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use crossterm::execute;
 use deck::Deck;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -83,7 +83,10 @@ fn main() -> Result<()> {
 
     let deck = match &path {
         Some(p) if p.exists() => decklist::load(p)?,
-        Some(p) => Deck { path: Some(p.clone()), ..Default::default() },
+        Some(p) => Deck {
+            path: Some(p.clone()),
+            ..Default::default()
+        },
         None => Deck::default(),
     };
 
@@ -180,10 +183,10 @@ fn font_size() -> (FontSize, &'static str) {
 
     // Terminals under tmux report no pixel size through the ioctl, but tmux
     // has queried the outer terminal itself and will hand over the answer.
-    if std::env::var_os("TMUX").is_some() {
-        if let Some(size) = tmux_cell_size() {
-            return (size, "tmux");
-        }
+    if std::env::var_os("TMUX").is_some()
+        && let Some(size) = tmux_cell_size()
+    {
+        return (size, "tmux");
     }
 
     (FontSize::new(8, 16), "fallback")
@@ -191,7 +194,11 @@ fn font_size() -> (FontSize, &'static str) {
 
 fn tmux_cell_size() -> Option<FontSize> {
     let out = std::process::Command::new("tmux")
-        .args(["display-message", "-p", "#{client_cell_width}x#{client_cell_height}"])
+        .args([
+            "display-message",
+            "-p",
+            "#{client_cell_width}x#{client_cell_height}",
+        ])
         .output()
         .ok()?;
     parse_cell_size(&String::from_utf8_lossy(&out.stdout))
@@ -229,7 +236,9 @@ fn doctor() {
             println!("  cells                 {}x{}", w.columns, w.rows);
             println!("  pixels                {}x{}", w.width, w.height);
             if w.width == 0 || w.height == 0 {
-                println!("  note                  no pixel size reported; font size falls back to 8x16");
+                println!(
+                    "  note                  no pixel size reported; font size falls back to 8x16"
+                );
             }
         }
         Err(e) => println!("  failed                {e}"),
@@ -239,19 +248,27 @@ fn doctor() {
     let picker = build_picker();
     println!("\npreview");
     let font = picker.font_size();
-    println!("  font size             {}x{} (from {source})", font.width, font.height);
+    println!(
+        "  font size             {}x{} (from {source})",
+        font.width, font.height
+    );
     println!("  protocol              {:?}", picker.protocol_type());
     if matches!(picker.protocol_type(), ProtocolType::Halfblocks)
         && std::env::var_os("TMUX").is_some()
     {
         println!("  note                  halfblocks under tmux: kitty graphics are dropped by");
-        println!("                        tmux passthrough. MTGTUI_IMAGE_PROTOCOL=kitty overrides.");
+        println!(
+            "                        tmux passthrough. MTGTUI_IMAGE_PROTOCOL=kitty overrides."
+        );
     }
 
     let dir = images::image_dir();
     let count = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
     println!("\ncache");
-    println!("  cards                 {}", scryfall::cache_stamp().unwrap_or_else(|| "<none>".into()));
+    println!(
+        "  cards                 {}",
+        scryfall::cache_stamp().unwrap_or_else(|| "<none>".into())
+    );
     println!("  images                {count} files in {}", dir.display());
 }
 
@@ -266,15 +283,16 @@ fn setup() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
 
 fn restore(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), DisableFocusChange, LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableFocusChange,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
     Ok(())
 }
 
-fn run(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> Result<()> {
+fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> Result<()> {
     loop {
         app.tick_images();
         app.tick_suggestions();

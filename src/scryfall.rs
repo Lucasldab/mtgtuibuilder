@@ -111,7 +111,9 @@ pub fn load(refresh: bool, progress: &mut dyn FnMut(&str)) -> Result<CardDb> {
 
 /// When the local cache was built, for display.
 pub fn cache_stamp() -> Option<String> {
-    fs::read_to_string(stamp_path()).ok().map(|s| s.trim().to_string())
+    fs::read_to_string(stamp_path())
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 fn rebuild(progress: &mut dyn FnMut(&str)) -> Result<()> {
@@ -122,8 +124,8 @@ fn rebuild(progress: &mut dyn FnMut(&str)) -> Result<()> {
         .set("User-Agent", AGENT)
         .call()
         .context("fetching bulk index")?;
-    let index: BulkIndex = serde_json::from_reader(index_resp.into_reader())
-        .context("parsing bulk index")?;
+    let index: BulkIndex =
+        serde_json::from_reader(index_resp.into_reader()).context("parsing bulk index")?;
 
     // default_cards carries every printing, which is what per-printing
     // Cardmarket pricing needs; oracle_cards would collapse them to one.
@@ -156,7 +158,7 @@ fn rebuild(progress: &mut dyn FnMut(&str)) -> Result<()> {
             Err(_) => continue,
         };
         seen += 1;
-        if seen % 20_000 == 0 {
+        if seen.is_multiple_of(20_000) {
             progress(&format!("  parsed {seen} printings..."));
         }
 
@@ -170,7 +172,11 @@ fn rebuild(progress: &mut dyn FnMut(&str)) -> Result<()> {
         {
             continue;
         }
-        let commander_legal = raw.legalities.get("commander").map(|s| s == "legal").unwrap_or(false);
+        let commander_legal = raw
+            .legalities
+            .get("commander")
+            .map(|s| s == "legal")
+            .unwrap_or(false);
 
         let eur = raw
             .prices

@@ -2,35 +2,52 @@
 
 [![CI](https://github.com/Lucasldab/mtgtuibuilder/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucasldab/mtgtuibuilder/actions/workflows/ci.yml)
 
-Terminal Magic: the Gathering deck builder — Archidekt-style categories,
-Commander legality, and Cardmarket prices. Rust + Ratatui.
+A Magic: the Gathering deck builder for the terminal. Archidekt-style
+categories, Commander legality checks, Cardmarket prices per printing, card art
+in the terminal and EDHREC suggestions. Rust + Ratatui.
 
 ![The example Atraxa deck: cards grouped by category with prices, and a stats pane with the deck price, mana curve and Commander checks](docs/screenshot.png)
 
-## Why the prices work without a Cardmarket account
+## Highlights
 
-Cardmarket's own API requires OAuth1 with a registered dedicated app and gates
-its price guide. Scryfall redistributes the same numbers in its `eur` field,
-with no auth and no rate limit — so that is where prices come from here.
-
-Prices are **per printing**, because that is how Cardmarket works: a card
-defaults to its cheapest printing, and you can pin a specific one per card.
+- **Card art inside tmux took an upstream fix, which I wrote.** ratatui-image
+  drew a whole row of kitty's unicode placeholders into one cell, which tmux's
+  grid cannot hold, so images silently never appeared. My fix,
+  [ratatui-image#201](https://github.com/ratatui/ratatui-image/pull/201), emits
+  one placeholder per cell. It was merged and shipped in ratatui-image 11.1, and
+  this project dropped its local workaround for the released crate.
+- **Cardmarket prices without a Cardmarket account.** Cardmarket's API needs
+  OAuth1 and a registered app. Scryfall republishes the same price guide in its
+  bulk data, which needs no key, so prices come from there.
+- **Works offline after the first run.** Scryfall's full card file is trimmed to
+  the fields the app uses and cached at about 20 MB. Card images and EDHREC
+  pages are fetched on a background thread and cached, so the UI never waits on
+  the network.
+- **Decks stay portable.** Decks are saved as plain-text lists that Archidekt,
+  Moxfield and MTGO read too, not in a private format.
+- **91 tests that pass without network access.** CI checks formatting, runs clippy with
+  warnings as errors, and runs the tests on every push and pull request.
 
 ## Install
 
+Needs a Rust toolchain.
+
 ```sh
-cargo build --release
-install -Dm755 target/release/mtgtuibuilder ~/.local/bin/mtgtuibuilder
+cargo install --locked --git https://github.com/Lucasldab/mtgtuibuilder
 ```
 
-First run downloads Scryfall's `default_cards` bulk file (~80 MB compressed),
-trims it to the fields this tool uses, and caches ~19 MB to
-`~/.cache/mtgtuibuilder/`. Later runs start straight from that cache.
+Or from a clone: `cargo build --release`, then copy `target/release/mtgtuibuilder`
+onto your `PATH`.
+
+The first run downloads Scryfall's `default_cards` bulk file (~80 MB
+compressed) and caches the trimmed copy in `~/.cache/mtgtuibuilder/`. Later
+runs start from the cache.
 
 ```sh
 mtgtuibuilder                  # scratch deck
 mtgtuibuilder decks/atraxa.txt # open or create
 mtgtuibuilder --refresh        # re-download; prices update daily upstream
+mtgtuibuilder --doctor         # what the image preview will do in this terminal
 ```
 
 ## Keys
@@ -53,68 +70,48 @@ mtgtuibuilder --refresh        # re-download; prices update daily upstream
 | `?` | help |
 | `q` | quit |
 
+## Prices
+
+Prices are **per printing**, because that is how Cardmarket sells cards. A card
+defaults to its cheapest printing, and `p` pins a specific one. The deck total
+in the stats pane uses the pinned printings. The maybeboard is left out of it.
+
 ## Card images
 
-`i` toggles a preview of the selected card, using the pinned printing so the
-art matches the version being priced. Images render through kitty's graphics
-protocol, sixel or iTerm2 where available, and fall back to unicode
-half-blocks everywhere else.
+`i` shows the selected card in its pinned printing, so the art matches the
+price. Images use kitty's graphics protocol, sixel or iTerm2 where the terminal
+supports one, and unicode half-blocks everywhere else. Set
+`MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override detection.
 
-The preview takes its own column on terminals at least 120 columns wide;
-below that it replaces the stats pane. Images are fetched on a background
-thread and cached under `~/.cache/mtgtuibuilder/images/`, so scrolling never
-blocks on the network and a card is only ever downloaded once.
+On terminals at least 120 columns wide the preview gets its own column.
+Narrower, it replaces the stats pane.
 
-Set `MTGTUI_IMAGE_PROTOCOL=kitty|sixel|iterm2|halfblocks` to override protocol
-detection, and `--doctor` to report what the preview will actually do in the
-current terminal.
+Inside tmux, two things are handled automatically:
 
-Kitty's protocol goes through ratatui-image like every other one. It used to
-need a local replacement: ratatui-image drew a whole row of unicode
-placeholders into a single ratatui cell and marked the rest of the row
-skipped, which tmux cannot represent -- its grid holds one glyph plus a few
-combining marks per cell -- so the placeholder grid arrived malformed, kitty
-placed nothing, and `q=2` in the transmission silenced any error. That is
-fixed upstream in
-[ratatui-image#201](https://github.com/ratatui/ratatui-image/pull/201), which
-emits one placeholder per cell, so the local module is gone.
+- **Cell size.** Under tmux the window-size ioctl reports no pixel size, so the
+  app reads tmux's own `client_cell_width/height`. Kitty sizes the image from
+  the cell grid, so a wrong value puts the image outside the cells meant to
+  show it.
+- **Re-sending the image.** With `allow-passthrough on`, tmux drops graphics
+  from a pane that is not visible. The app asks for focus events and sends the
+  image again when the pane comes back.
 
-Half-blocks remain the fallback for terminals without a graphics protocol.
+## EDHREC suggestions
 
-### Inside tmux
+`e` lists the cards EDHREC's decks for your commander play that yours does not.
+Each row shows how many of those decks run the card, its synergy score and its
+Cardmarket price, with the highlighted card's art beside the list. `Enter` adds
+the card and `Esc` closes. Cards already in the deck or the maybeboard are left
+out.
 
-Two tmux details matter, both handled automatically:
-
-- Font size. The window-size ioctl reports no pixel dimensions under tmux, so
-  the cell size is read from tmux's own `client_cell_width/height`. This is not
-  cosmetic: kitty's unicode placeholders size the image to a cell grid derived
-  from it, and a wrong value puts the image outside the cells meant to show it.
-- Re-transmission. With `allow-passthrough on` (the common setting) tmux
-  discards graphics from a pane that is not currently visible, and the image is
-  otherwise transmitted only once. The app requests focus reporting and
-  re-transmits when the pane comes back into view.
-
-## Suggestions
-
-`e` lists what EDHREC's decks for your commander play that yours does not --
-the "what goes in the other 66 slots" question. Each row shows the share of
-eligible decks running the card, its synergy score, and its Cardmarket price
-from the local card data, with the highlighted card's art beside the list.
-`Enter` adds the highlighted card; `Esc` closes.
-
-Cards already in the deck or the maybeboard are filtered out, so the list only
-ever answers "what else".
-
-EDHREC publishes no documented API, so this reads the JSON its own pages are
-built from. That shape is unofficial and may change without notice: parsing is
-lenient, a failure degrades to a message rather than an error, and each
-commander is fetched once and cached under
-`~/.cache/mtgtuibuilder/edhrec/`.
+EDHREC has no documented API, so this reads the JSON its own pages are built
+from. That format can change without notice. Parsing is lenient, a failure
+shows a message instead of crashing, and each commander's page is fetched once
+and cached in `~/.cache/mtgtuibuilder/edhrec/`.
 
 ## Deck format
 
-Plain text in Archidekt's dialect, so decks round-trip with Archidekt, Moxfield
-and MTGO rather than living in a private format:
+Archidekt's plain-text format:
 
 ```
 1x Atraxa, Praetors' Voice (one) 196 [Commander]
@@ -124,14 +121,26 @@ Maybeboard
 1x Mana Crypt (2xm) 270 [Ramp]
 ```
 
-Quantity may be `1` or `1x`. The printing and category are both optional, so a
-bare Moxfield list loads unchanged. The maybeboard is excluded from legality
-checks and from the deck price.
+The quantity can be `1` or `1x`. The printing and the category are optional,
+so a bare Moxfield list loads unchanged.
 
 ## Commander checks
 
-Card count, singleton (basic lands and *Relentless Rats*-style cards exempt),
-colour identity against the commander, commander eligibility, and ban list.
+Card count, singleton (basic lands and *Relentless Rats*-style cards are
+exempt), colour identity against the commander, commander eligibility and the
+ban list. The maybeboard is not checked.
+
+## Code layout
+
+| Module | Does |
+|---|---|
+| `scryfall.rs` | downloads and trims the bulk file, loads the cache |
+| `deck.rs`, `decklist.rs` | the deck model and its price; reading and writing the text format |
+| `commander.rs` | legality checks |
+| `stats.rs` | mana curve, colour pips, card types, land count |
+| `edhrec.rs` | suggestions from EDHREC's page data |
+| `images.rs` | background image fetching and caching |
+| `app.rs`, `ui.rs` | state, key handling and drawing |
 
 ## Tests
 
@@ -139,14 +148,15 @@ colour identity against the commander, commander eligibility, and ban list.
 cargo test
 ```
 
-Tests that need the card cache skip themselves when it is absent, so
-`cargo test` passes on a clean checkout. `SHOW_UI=1 cargo test
-renders_a_real_commander_deck -- --nocapture` prints a rendered frame.
+Tests that need the card cache skip themselves when it is missing, so
+`cargo test` passes on a clean checkout.
+`SHOW_UI=1 cargo test renders_a_real_commander_deck -- --nocapture` prints a
+rendered frame.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Third-party code and data are credited in
+MIT, see [LICENSE](LICENSE). Third-party code and data are credited in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-Unaffiliated with Wizards of the Coast, Scryfall, Cardmarket, EDHREC and
+Not affiliated with Wizards of the Coast, Scryfall, Cardmarket, EDHREC or
 Archidekt.
